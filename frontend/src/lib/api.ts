@@ -1,6 +1,8 @@
 // EcoTrack AI API Client helper
 
-const API_BASE = 'http://localhost:5001/api';
+const API_BASE = typeof window !== 'undefined' && window.location.hostname !== 'localhost'
+  ? '/_backend/api'
+  : 'http://localhost:5001/api';
 
 /**
  * Gets or creates the current user session from local storage.
