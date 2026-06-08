@@ -1,0 +1,104 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id              String         @id @default(uuid())
+  email           String         @unique
+  name            String?
+  points          Int            @default(0)
+  level           String         @default("Beginner") // Beginner, Eco Explorer, Sustainability Hero, Climate Champion
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  
+  calculations    Calculation[]
+  habits          DailyHabit[]
+  challenges      UserChallenge[]
+  receipts        ReceiptScan[]
+}
+
+model Calculation {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  
+  // Inputs
+  transportMode   String   // car, bike, bus, train, metro, walking, flight
+  travelDistance  Float    // km/day
+  electricity     Float    // kWh/month
+  acUsage         Float    // hours/day
+  diet            String   // vegetarian, mixed, non-vegetarian
+  shoppingOnline  Int      // purchases/month
+  shoppingFashion Int      // purchases/month
+  recyclingHabit  String   // always, sometimes, never
+  plasticUsage    String   // high, medium, low
+  
+  // Outputs (kg CO2 / month)
+  transportCO2    Float
+  energyCO2       Float
+  foodCO2         Float
+  shoppingCO2     Float
+  wasteCO2        Float
+  totalCO2        Float
+  carbonScore     Int      // 1 - 100
+  rating          String   // A, B, C, D, E, F
+  
+  createdAt       DateTime @default(now())
+}
+
+model DailyHabit {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  date        DateTime @default(now())
+  
+  // Habits marked
+  usedBicycle      Boolean  @default(false)
+  avoidedPlastic   Boolean  @default(false)
+  usedPublicTransport Boolean @default(false)
+  savedElectricity Boolean  @default(false)
+  recycledWaste    Boolean  @default(false)
+  carpooled        Boolean  @default(false)
+  
+  pointsEarned     Int      @default(0)
+}
+
+model Challenge {
+  id          String          @id @default(uuid())
+  title       String          // e.g., "No Plastic Week"
+  description String
+  points      Int
+  duration    Int             // in days
+  category    String          // transport, energy, food, waste
+  users       UserChallenge[]
+}
+
+model UserChallenge {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  challengeId String
+  challenge   Challenge @relation(fields: [challengeId], references: [id])
+  status      String    @default("IN_PROGRESS") // IN_PROGRESS, COMPLETED, FAILED
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+}
+
+model ReceiptScan {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  fileName    String
+  fileType    String   // bill, fuel_receipt
+  scannedAt   DateTime @default(now())
+  
+  // Extracted details
+  amount      Float
+  co2Estimate Float
+  rawText     String
+}
