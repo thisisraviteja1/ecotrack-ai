@@ -647,7 +647,7 @@ export async function generatePDFReport(req: Request, res: Response): Promise<vo
         { name: 'Waste Production', co2: latestCalc.wasteCO2 },
       ];
 
-      items.forEach((item) => {
+      items.forEach((item: { name: string; co2: number }) => {
         doc.fontSize(11).fillColor(darkGray).text(`${item.name}: `, { continued: true });
         doc.fillColor(primaryColor).text(`${item.co2.toFixed(1)} kg CO2 (${((item.co2 / latestCalc.totalCO2) * 100).toFixed(0)}%)`);
         doc.moveDown(0.3);
