@@ -243,8 +243,8 @@ export async function getDashboard(req: Request, res: Response): Promise<void> {
       user,
       latestCalculation: latestCalc,
       habits,
-      activeChallenges: userChallenges.filter(uc => uc.status === 'IN_PROGRESS'),
-      completedChallenges: userChallenges.filter(uc => uc.status === 'COMPLETED'),
+      activeChallenges: userChallenges.filter((uc: any) => uc.status === 'IN_PROGRESS'),
+      completedChallenges: userChallenges.filter((uc: any) => uc.status === 'COMPLETED'),
       prediction,
       reductionPercentage
     });
