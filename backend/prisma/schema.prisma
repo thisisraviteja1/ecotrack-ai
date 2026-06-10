@@ -1,5 +1,5 @@
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -10,95 +10,131 @@ generator client {
 model User {
   id              String         @id @default(uuid())
   email           String         @unique
-  name            String?
+  passwordHash    String
+  name            String
+  role            String         @default("USER") // USER, ADMIN
   points          Int            @default(0)
-  level           String         @default("Beginner") // Beginner, Eco Explorer, Sustainability Hero, Climate Champion
+  level           String         @default("Beginner")
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
-  
+  deletedAt       DateTime?      // Soft delete support
+
   calculations    Calculation[]
   habits          DailyHabit[]
   challenges      UserChallenge[]
   receipts        ReceiptScan[]
+  refreshTokens   RefreshToken[]
+  auditLogs       AuditLog[]
+
+  @@index([email])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  revokedAt DateTime?
+
+  @@index([userId])
 }
 
 model Calculation {
-  id              String   @id @default(uuid())
+  id              String    @id @default(uuid())
   userId          String
-  user            User     @relation(fields: [userId], references: [id])
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   
   // Inputs
-  transportMode   String   // car, bike, bus, train, metro, walking, flight
-  travelDistance  Float    // km/day
-  electricity     Float    // kWh/month
-  acUsage         Float    // hours/day
-  diet            String   // vegetarian, mixed, non-vegetarian
-  shoppingOnline  Int      // purchases/month
-  shoppingFashion Int      // purchases/month
-  recyclingHabit  String   // always, sometimes, never
-  plasticUsage    String   // high, medium, low
+  transportMode   String   
+  travelDistance  Float    
+  electricity     Float    
+  acUsage         Float    
+  diet            String   
+  shoppingOnline  Int      
+  shoppingFashion Int      
+  recyclingHabit  String   
+  plasticUsage    String   
   
-  // Outputs (kg CO2 / month)
+  // Outputs
   transportCO2    Float
   energyCO2       Float
   foodCO2         Float
   shoppingCO2     Float
   wasteCO2        Float
   totalCO2        Float
-  carbonScore     Int      // 1 - 100
-  rating          String   // A, B, C, D, E, F
+  carbonScore     Int      
+  rating          String   
   
-  createdAt       DateTime @default(now())
+  createdAt       DateTime  @default(now())
+  deletedAt       DateTime? // Soft delete support
+
+  @@index([userId])
 }
 
 model DailyHabit {
-  id          String   @id @default(uuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id])
-  date        DateTime @default(now())
-  
-  // Habits marked
-  usedBicycle      Boolean  @default(false)
-  avoidedPlastic   Boolean  @default(false)
-  usedPublicTransport Boolean @default(false)
-  savedElectricity Boolean  @default(false)
-  recycledWaste    Boolean  @default(false)
-  carpooled        Boolean  @default(false)
-  
-  pointsEarned     Int      @default(0)
+  id                  String    @id @default(uuid())
+  userId              String
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date                DateTime  @default(now())
+  usedBicycle         Boolean   @default(false)
+  avoidedPlastic      Boolean   @default(false)
+  usedPublicTransport Boolean   @default(false)
+  savedElectricity    Boolean   @default(false)
+  recycledWaste       Boolean   @default(false)
+  carpooled           Boolean   @default(false)
+  pointsEarned        Int       @default(0)
+
+  @@index([userId, date])
 }
 
 model Challenge {
   id          String          @id @default(uuid())
-  title       String          // e.g., "No Plastic Week"
+  title       String          
   description String
   points      Int
-  duration    Int             // in days
-  category    String          // transport, energy, food, waste
+  duration    Int             
+  category    String          
   users       UserChallenge[]
 }
 
 model UserChallenge {
   id          String    @id @default(uuid())
   userId      String
-  user        User      @relation(fields: [userId], references: [id])
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   challengeId String
-  challenge   Challenge @relation(fields: [challengeId], references: [id])
-  status      String    @default("IN_PROGRESS") // IN_PROGRESS, COMPLETED, FAILED
+  challenge   Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  status      String    @default("IN_PROGRESS") 
   startedAt   DateTime  @default(now())
   completedAt DateTime?
+
+  @@index([userId])
+  @@index([challengeId])
 }
 
 model ReceiptScan {
   id          String   @id @default(uuid())
   userId      String
-  user        User     @relation(fields: [userId], references: [id])
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   fileName    String
-  fileType    String   // bill, fuel_receipt
+  fileType    String   
   scannedAt   DateTime @default(now())
-  
-  // Extracted details
   amount      Float
   co2Estimate Float
   rawText     String
+
+  @@index([userId])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String   
+  details   String
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }

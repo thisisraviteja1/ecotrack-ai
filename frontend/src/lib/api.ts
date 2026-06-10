@@ -1,109 +1,193 @@
-// EcoTrack AI API Client helper
+// EcoTrack AI Enterprise API Client helper
 
 const API_BASE = typeof window !== 'undefined' && window.location.hostname !== 'localhost'
   ? '/_backend/api'
   : 'http://localhost:5001/api';
 
-/**
- * Gets or creates the current user session from local storage.
- * If no user exists, it registers a default demo user.
- */
-export async function getOrCreateUserSession(): Promise<{ id: string; email: string; name: string; points: number; level: string }> {
-  if (typeof window === 'undefined') {
-    return { id: '', email: '', name: '', points: 0, level: 'Beginner' };
-  }
+// Store JWT Access Token in-memory for security
+let inMemoryAccessToken: string | null = null;
 
-  const storedUser = localStorage.getItem('ecotrack_user');
-  if (storedUser) {
+/**
+ * Custom fetch wrapper that appends JWT Authorization and handles silent token refresh
+ */
+async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(options.headers || {});
+  
+  if (inMemoryAccessToken) {
+    headers.set('Authorization', `Bearer ${inMemoryAccessToken}`);
+  }
+  
+  // Enforce sending credentials (HTTP-only cookies for refresh tokens)
+  const fetchOptions: RequestInit = {
+    ...options,
+    headers,
+    credentials: 'include' // crucial for reading/writing cross-origin HTTP-only cookies
+  };
+
+  let response = await fetch(url, fetchOptions);
+
+  // If unauthorized, token might have expired. Try rotating/refreshing.
+  if ((response.status === 401 || response.status === 403) && !url.includes('/auth/refresh')) {
     try {
-      const parsed = JSON.parse(storedUser);
-      // Fetch latest points/level status from backend
-      const res = await fetch(`${API_BASE}/dashboard/${parsed.id}`).then(r => r.json());
-      if (res && res.user) {
-        const updatedUser = res.user;
-        localStorage.setItem('ecotrack_user', JSON.stringify(updatedUser));
-        return updatedUser;
+      const refreshed = await attemptTokenRefresh();
+      if (refreshed) {
+        // Retry original request with new token
+        headers.set('Authorization', `Bearer ${inMemoryAccessToken}`);
+        response = await fetch(url, fetchOptions);
       }
-      return parsed;
     } catch (e) {
-      console.warn('Failed to parse stored user, creating new session', e);
+      console.warn('Silent token refresh failed, forcing logout:', e);
+      logout();
     }
   }
 
-  // Create a default session
-  const randomId = Math.floor(Math.random() * 100000);
-  const demoEmail = `eco.hero.${randomId}@ecotrack.ai`;
-  const demoName = `Eco Explorer #${randomId}`;
+  return response;
+}
 
+/**
+ * Attempts to call refresh token rotation endpoint
+ */
+async function attemptTokenRefresh(): Promise<boolean> {
   try {
-    const response = await fetch(`${API_BASE}/auth/register`, {
+    const response = await fetch(`${API_BASE}/auth/refresh`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: demoEmail, name: demoName })
+      credentials: 'include'
     });
 
-    if (!response.ok) {
-      throw new Error('Server registration failed');
+    if (response.ok) {
+      const data = await response.json();
+      inMemoryAccessToken = data.accessToken;
+      return true;
     }
-
-    const user = await response.json();
-    localStorage.setItem('ecotrack_user', JSON.stringify(user));
-    return user;
-  } catch (error) {
-    console.error('API Auth fallback to mock session:', error);
-    // Mock user for offline mode
-    const mockUser = {
-      id: 'mock-user-12345',
-      email: demoEmail,
-      name: demoName,
-      points: 120,
-      level: 'Eco Explorer'
-    };
-    localStorage.setItem('ecotrack_user', JSON.stringify(mockUser));
-    return mockUser;
+  } catch (e) {
+    console.error('Network error during token refresh:', e);
   }
+  return false;
+}
+
+/**
+ * Logs out the user, clearing tokens and cookies
+ */
+export async function logout(): Promise<void> {
+  try {
+    await fetch(`${API_BASE}/auth/logout`, {
+      method: 'POST',
+      credentials: 'include'
+    });
+  } catch (e) {
+    console.warn('Network error during logout API call:', e);
+  }
+
+  inMemoryAccessToken = null;
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('ecotrack_user');
+    window.dispatchEvent(new Event('ecotrack-user-updated'));
+  }
+}
+
+/**
+ * Check if the user is authenticated. 
+ * Attempts a silent token refresh if inMemory token is empty.
+ */
+export async function checkAuthStatus(): Promise<any | null> {
+  if (typeof window === 'undefined') return null;
+
+  const storedUser = localStorage.getItem('ecotrack_user');
+  if (!storedUser) return null;
+
+  // If token is missing, attempt rotation first
+  if (!inMemoryAccessToken) {
+    const refreshed = await attemptTokenRefresh();
+    if (!refreshed) {
+      logout();
+      return null;
+    }
+  }
+
+  try {
+    const response = await authFetch(`${API_BASE}/auth/profile`);
+    if (response.ok) {
+      const user = await response.json();
+      localStorage.setItem('ecotrack_user', JSON.stringify(user));
+      return user;
+    }
+  } catch (e) {
+    console.error('Profile verification failed:', e);
+  }
+  return null;
+}
+
+/**
+ * Login user
+ */
+export async function login(credentials: { email: string; password?: string }) {
+  const response = await fetch(`${API_BASE}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(credentials)
+  });
+
+  if (!response.ok) {
+    const err = await response.json();
+    throw new Error(err.error || 'Authentication failed');
+  }
+
+  const data = await response.json();
+  inMemoryAccessToken = data.accessToken;
+  localStorage.setItem('ecotrack_user', JSON.stringify(data.user));
+  window.dispatchEvent(new Event('ecotrack-user-updated'));
+  return data.user;
+}
+
+/**
+ * Register user
+ */
+export async function register(profile: { email: string; password?: string; name: string }) {
+  const response = await fetch(`${API_BASE}/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(profile)
+  });
+
+  if (!response.ok) {
+    const err = await response.json();
+    throw new Error(err.error || 'Registration failed');
+  }
+
+  const data = await response.json();
+  inMemoryAccessToken = data.accessToken;
+  localStorage.setItem('ecotrack_user', JSON.stringify(data.user));
+  window.dispatchEvent(new Event('ecotrack-user-updated'));
+  return data.user;
 }
 
 /**
  * Get dashboard stats for a user
  */
-export async function getDashboardStats(userId: string) {
-  try {
-    const response = await fetch(`${API_BASE}/dashboard/${userId}`);
-    if (!response.ok) throw new Error('Failed to fetch dashboard');
-    return await response.json();
-  } catch (error) {
-    console.error('Fetch dashboard stats error, returning mock data:', error);
-    return getMockDashboardData();
-  }
+export async function getDashboardStats() {
+  const response = await authFetch(`${API_BASE}/dashboard`);
+  if (!response.ok) throw new Error('Failed to fetch dashboard');
+  return await response.json();
 }
 
 /**
  * Submit carbon calculation parameters
  */
-export async function submitCalculation(data: {
-  userId: string;
-  transportMode: string;
-  travelDistance: number;
-  electricity: number;
-  acUsage: number;
-  diet: string;
-  shoppingOnline: number;
-  shoppingFashion: number;
-  recyclingHabit: string;
-  plasticUsage: string;
-}) {
-  const response = await fetch(`${API_BASE}/calculator`, {
+export async function submitCalculation(data: any) {
+  const response = await authFetch(`${API_BASE}/calculator`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   });
-  if (!response.ok) throw new Error('Calculation submission failed');
+  if (!response.ok) {
+    const err = await response.json();
+    throw new Error(err.error || 'Calculation submission failed');
+  }
   const result = await response.json();
   
-  // Update local session points
   if (result.updatedUser) {
     localStorage.setItem('ecotrack_user', JSON.stringify(result.updatedUser));
+    window.dispatchEvent(new Event('ecotrack-user-updated'));
   }
   return result;
 }
@@ -111,24 +195,18 @@ export async function submitCalculation(data: {
 /**
  * Update daily habits tracker checklist
  */
-export async function submitHabits(userId: string, habits: {
-  usedBicycle: boolean;
-  avoidedPlastic: boolean;
-  usedPublicTransport: boolean;
-  savedElectricity: boolean;
-  recycledWaste: boolean;
-  carpooled: boolean;
-}) {
-  const response = await fetch(`${API_BASE}/habits`, {
+export async function submitHabits(habits: any) {
+  const response = await authFetch(`${API_BASE}/habits`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId, habits })
+    body: JSON.stringify(habits)
   });
   if (!response.ok) throw new Error('Habit submission failed');
   const result = await response.json();
   
   if (result.user) {
     localStorage.setItem('ecotrack_user', JSON.stringify(result.user));
+    window.dispatchEvent(new Event('ecotrack-user-updated'));
   }
   return result;
 }
@@ -137,47 +215,28 @@ export async function submitHabits(userId: string, habits: {
  * Get community leaderboard rank list
  */
 export async function getLeaderboard() {
-  try {
-    const response = await fetch(`${API_BASE}/leaderboard`);
-    if (!response.ok) throw new Error('Failed to fetch leaderboard');
-    return await response.json();
-  } catch (e) {
-    return [
-      { name: 'Sarah Jenkins', points: 1250, level: 'Climate Champion' },
-      { name: 'Alex Rivera', points: 920, level: 'Sustainability Hero' },
-      { name: 'David Chen', points: 740, level: 'Sustainability Hero' },
-      { name: 'Emily Watson', points: 480, level: 'Eco Explorer' },
-      { name: 'Liam Patel', points: 150, level: 'Beginner' }
-    ];
-  }
+  const response = await authFetch(`${API_BASE}/leaderboard`);
+  if (!response.ok) throw new Error('Failed to fetch leaderboard');
+  return await response.json();
 }
 
 /**
  * Fetch available Challenges
  */
 export async function getChallenges() {
-  try {
-    const response = await fetch(`${API_BASE}/challenges`);
-    if (!response.ok) throw new Error('Failed to fetch challenges');
-    return await response.json();
-  } catch (e) {
-    return [
-      { id: '1', title: 'No Plastic Week', description: 'Avoid single-use plastics for 7 days.', points: 150, category: 'waste' },
-      { id: '2', title: 'Public Transport Challenge', description: 'Commute using only public transit for 5 days.', points: 200, category: 'transport' },
-      { id: '3', title: 'Plant a Tree Challenge', description: 'Plant a tree or purchase a sapling.', points: 250, category: 'waste' },
-      { id: '4', title: 'Energy Saver Challenge', description: 'Save AC runtime by 2 hours daily.', points: 120, category: 'energy' }
-    ];
-  }
+  const response = await authFetch(`${API_BASE}/challenges`);
+  if (!response.ok) throw new Error('Failed to fetch challenges');
+  return await response.json();
 }
 
 /**
  * Join a green challenge
  */
-export async function joinChallenge(userId: string, challengeId: string) {
-  const response = await fetch(`${API_BASE}/challenges/join`, {
+export async function joinChallenge(challengeId: string) {
+  const response = await authFetch(`${API_BASE}/challenges/join`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId, challengeId })
+    body: JSON.stringify({ challengeId })
   });
   if (!response.ok) throw new Error('Failed to join challenge');
   return await response.json();
@@ -187,7 +246,7 @@ export async function joinChallenge(userId: string, challengeId: string) {
  * Complete and claim challenge reward points
  */
 export async function claimChallengeReward(userChallengeId: string) {
-  const response = await fetch(`${API_BASE}/challenges/complete`, {
+  const response = await authFetch(`${API_BASE}/challenges/complete`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ userChallengeId })
@@ -196,6 +255,7 @@ export async function claimChallengeReward(userChallengeId: string) {
   const result = await response.json();
   if (result.user) {
     localStorage.setItem('ecotrack_user', JSON.stringify(result.user));
+    window.dispatchEvent(new Event('ecotrack-user-updated'));
   }
   return result;
 }
@@ -204,7 +264,7 @@ export async function claimChallengeReward(userChallengeId: string) {
  * Send request to Gemini AI Sustainability Coach
  */
 export async function askCoach(history: any[], message: string) {
-  const response = await fetch(`${API_BASE}/ai/coach`, {
+  const response = await authFetch(`${API_BASE}/ai/coach`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ history, message })
@@ -216,12 +276,11 @@ export async function askCoach(history: any[], message: string) {
 /**
  * Upload bill/receipt image to backend AI Receipt Scanner
  */
-export async function scanReceipt(userId: string, file: File) {
+export async function scanReceipt(file: File) {
   const formData = new FormData();
   formData.append('file', file);
-  formData.append('userId', userId);
 
-  const response = await fetch(`${API_BASE}/ai/scan-receipt`, {
+  const response = await authFetch(`${API_BASE}/ai/scan-receipt`, {
     method: 'POST',
     body: formData
   });
@@ -229,6 +288,7 @@ export async function scanReceipt(userId: string, file: File) {
   const result = await response.json();
   if (result.user) {
     localStorage.setItem('ecotrack_user', JSON.stringify(result.user));
+    window.dispatchEvent(new Event('ecotrack-user-updated'));
   }
   return result;
 }
@@ -236,11 +296,11 @@ export async function scanReceipt(userId: string, file: File) {
 /**
  * Spend Eco Points in Marketplace
  */
-export async function buyOffset(userId: string, cost: number, name: string) {
-  const response = await fetch(`${API_BASE}/offset/buy`, {
+export async function buyOffset(cost: number, name: string) {
+  const response = await authFetch(`${API_BASE}/offset/buy`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId, cost, name })
+    body: JSON.stringify({ cost, name })
   });
   if (!response.ok) {
     const errorData = await response.json();
@@ -249,6 +309,7 @@ export async function buyOffset(userId: string, cost: number, name: string) {
   const result = await response.json();
   if (result.user) {
     localStorage.setItem('ecotrack_user', JSON.stringify(result.user));
+    window.dispatchEvent(new Event('ecotrack-user-updated'));
   }
   return result;
 }
@@ -256,34 +317,6 @@ export async function buyOffset(userId: string, cost: number, name: string) {
 /**
  * Get PDF Report download URL
  */
-export function getPdfReportUrl(userId: string): string {
-  return `${API_BASE}/reports/pdf/${userId}`;
-}
-
-// Helper mock data
-function getMockDashboardData() {
-  return {
-    latestCalculation: {
-      transportCO2: 120.5,
-      energyCO2: 85.2,
-      foodCO2: 150.0,
-      shoppingCO2: 30.0,
-      wasteCO2: 12.0,
-      totalCO2: 397.7,
-      carbonScore: 47,
-      rating: 'D'
-    },
-    habits: [
-      { date: new Date().toISOString(), usedBicycle: true, avoidedPlastic: false, usedPublicTransport: true, savedElectricity: false, recycledWaste: true, carpooled: false }
-    ],
-    activeChallenges: [],
-    completedChallenges: [],
-    prediction: {
-      forecastAnnualWithoutChange: 4772,
-      forecastAnnualWithChange: 3579,
-      reductionPercent: 25,
-      explanation: "Mock mode is active. Keep logging your daily habits to decrease your carbon footprint prediction."
-    },
-    reductionPercentage: 25
-  };
+export function getPdfReportUrl(): string {
+  return `${API_BASE}/reports/pdf`;
 }

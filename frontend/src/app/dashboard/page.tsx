@@ -2,45 +2,40 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { getOrCreateUserSession, getDashboardStats, getPdfReportUrl } from '../../lib/api';
+import useAuth from '../../hooks/useAuth';
+import LoadingSkeleton from '../../components/LoadingSkeleton';
+import { getDashboardStats, getPdfReportUrl } from '../../lib/api';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, Legend } from 'recharts';
-import { Award, Leaf, TrendingDown, ArrowRight, Download, Brain, Sparkles, AlertCircle } from 'lucide-react';
+import { Award, TrendingDown, ArrowRight, Download, Brain, AlertCircle } from 'lucide-react';
 
 export default function DashboardPage() {
+  const { user, loading: authLoading } = useAuth(true);
   const [mounted, setMounted] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [userId, setUserId] = useState('');
-  const [userName, setUserName] = useState('');
+  const [loadingStats, setLoadingStats] = useState(true);
   const [data, setData] = useState<any>(null);
 
   useEffect(() => {
     setMounted(true);
-    async function loadData() {
+    async function loadStats() {
+      if (!user) return;
       try {
-        const session = await getOrCreateUserSession();
-        setUserId(session.id);
-        setUserName(session.name);
-        
-        const stats = await getDashboardStats(session.id);
+        const stats = await getDashboardStats();
         setData(stats);
       } catch (err) {
         console.error('Failed to load dashboard data:', err);
       } finally {
-        setLoading(false);
+        setLoadingStats(false);
       }
     }
-    loadData();
-  }, []);
+    
+    if (user) {
+      loadStats();
+    }
+  }, [user]);
 
   if (!mounted) return null;
-
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[50vh]">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-emerald-500 mb-4" />
-        <p className="text-gray-400 font-semibold text-sm">Aggregating carbon data...</p>
-      </div>
-    );
+  if (authLoading || loadingStats) {
+    return <LoadingSkeleton />;
   }
 
   const latestCalc = data?.latestCalculation;
@@ -56,7 +51,7 @@ export default function DashboardPage() {
     { name: 'Waste', value: Math.round(latestCalc.wasteCO2), color: '#ec4899' },
   ].filter(item => item.value > 0) : [];
 
-  // Comparison Bar Chart data (User vs average citizen benchmark ~380 kg CO2 / month)
+  // Comparison Bar Chart data
   const barData = latestCalc ? [
     { name: 'Transport', You: Math.round(latestCalc.transportCO2), Average: 140 },
     { name: 'Energy', You: Math.round(latestCalc.energyCO2), Average: 120 },
@@ -64,7 +59,7 @@ export default function DashboardPage() {
     { name: 'Others', You: Math.round(latestCalc.shoppingCO2 + latestCalc.wasteCO2), Average: 40 },
   ] : [];
 
-  // Line chart weekly habit points earned
+  // Line chart weekly habit points
   const lineData = data?.habits?.map((h: any) => ({
     date: new Date(h.date).toLocaleDateString(undefined, { weekday: 'short' }),
     Points: h.pointsEarned
@@ -80,15 +75,15 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
-      {/* Header and Download Button */}
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-extrabold text-white">Carbon Analytics Dashboard</h1>
-          <p className="text-gray-400 font-semibold mt-1">Hello, {userName.split(' ')[0]}. Here is your sustainability overview.</p>
+          <p className="text-gray-400 font-semibold mt-1">Hello, {user?.name.split(' ')[0]}. Here is your sustainability overview.</p>
         </div>
         {latestCalc && (
           <a
-            href={getPdfReportUrl(userId)}
+            href={getPdfReportUrl()}
             download
             className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-white font-bold rounded-xl shadow-md transition-all text-sm shrink-0"
           >
@@ -147,11 +142,11 @@ export default function DashboardPage() {
             <div className="glass-panel p-6 border-white/5 bg-gray-950/40">
               <p className="text-[10px] text-gray-400 uppercase font-black tracking-wider">Community Standing</p>
               <h2 className="text-3xl font-black text-white mt-2">
-                {data?.user?.points} <span className="text-xs text-gray-400 font-bold">XP</span>
+                {user?.points} <span className="text-xs text-gray-400 font-bold">XP</span>
               </h2>
               <div className="flex items-center gap-1.5 text-amber-400 text-xs font-bold mt-3">
                 <Award className="w-3.5 h-3.5" />
-                <span>Level: {data?.user?.level}</span>
+                <span>Level: {user?.level}</span>
               </div>
             </div>
           </div>
@@ -179,9 +174,9 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {/* Visual Charts Layout */}
+          {/* Charts Layout */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Pie Chart: Categories */}
+            {/* Pie Chart */}
             <div className="glass-panel p-6 border-white/5 bg-gray-950/40">
               <h3 className="text-base font-bold text-gray-300 mb-6 uppercase tracking-wider">Emissions Category Split</h3>
               <div className="h-64 flex items-center justify-center">
@@ -207,7 +202,7 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Bar Chart: User vs Average */}
+            {/* Bar Chart */}
             <div className="glass-panel p-6 border-white/5 bg-gray-950/40">
               <h3 className="text-base font-bold text-gray-300 mb-6 uppercase tracking-wider">You vs Typical Citizen (kg CO₂/mo)</h3>
               <div className="h-64">
@@ -225,7 +220,7 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Line Chart: Weekly Habit check-in scores */}
+            {/* Line Chart */}
             <div className="glass-panel p-6 border-white/5 bg-gray-950/40 lg:col-span-2">
               <h3 className="text-base font-bold text-gray-300 mb-6 uppercase tracking-wider">Weekly Eco Check-in Score Trend</h3>
               <div className="h-64">

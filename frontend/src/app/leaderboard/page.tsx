@@ -1,35 +1,34 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { getOrCreateUserSession, getLeaderboard } from '../../lib/api';
-import { Trophy, Award, Medal, Crown } from 'lucide-react';
+import useAuth from '../../hooks/useAuth';
+import LoadingSkeleton from '../../components/LoadingSkeleton';
+import { getLeaderboard } from '../../lib/api';
+import { Trophy, Medal, Crown } from 'lucide-react';
 
 export default function LeaderboardPage() {
+  const { user: currentUser, loading: authLoading } = useAuth(true);
   const [users, setUsers] = useState<any[]>([]);
-  const [currentUserId, setCurrentUserId] = useState('');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function loadData() {
+      if (!currentUser) return;
       try {
-        const session = await getOrCreateUserSession();
-        setCurrentUserId(session.id);
-
         const board = await getLeaderboard();
         
         // Merge current user dynamically if they aren't on the list yet
-        const exists = board.some((u: any) => u.id === session.id || u.email === session.email);
-        if (!exists && session.points > 0) {
+        const exists = board.some((u: any) => u.id === currentUser.id || u.email === currentUser.email);
+        if (!exists && currentUser.points > 0) {
           board.push({
-            id: session.id,
-            name: session.name,
-            points: session.points,
-            level: session.level,
-            email: session.email
+            id: currentUser.id,
+            name: currentUser.name,
+            points: currentUser.points,
+            level: currentUser.level,
+            email: currentUser.email
           });
         }
 
-        // Sort descending by points
         board.sort((a: any, b: any) => b.points - a.points);
         setUsers(board);
       } catch (err) {
@@ -38,19 +37,16 @@ export default function LeaderboardPage() {
         setLoading(false);
       }
     }
-    loadData();
-  }, []);
+    
+    if (currentUser) {
+      loadData();
+    }
+  }, [currentUser]);
 
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[50vh]">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-emerald-500 mb-4" />
-        <p className="text-gray-400 font-semibold text-sm">Retrieving rankings...</p>
-      </div>
-    );
+  if (authLoading || loading) {
+    return <LoadingSkeleton />;
   }
 
-  // Top 3 Podium spots
   const podiumUsers = users.slice(0, 3);
   const otherUsers = users.slice(3);
 
@@ -80,7 +76,7 @@ export default function LeaderboardPage() {
           {podiumUsers.map((user, idx) => {
             const style = podiumColors[idx] || podiumColors[2];
             const Icon = style.icon;
-            const isCurrentUser = user.id === currentUserId;
+            const isCurrentUser = user.id === currentUser?.id;
 
             return (
               <div
@@ -116,7 +112,7 @@ export default function LeaderboardPage() {
         </div>
       )}
 
-      {/* Table for remaining positions */}
+      {/* Remaining positions */}
       {otherUsers.length > 0 && (
         <div className="glass-panel border-white/5 bg-gray-950/40 overflow-hidden">
           <div className="overflow-x-auto">
@@ -132,7 +128,7 @@ export default function LeaderboardPage() {
               <tbody className="divide-y divide-white/5">
                 {otherUsers.map((user, idx) => {
                   const rank = idx + 4;
-                  const isCurrentUser = user.id === currentUserId;
+                  const isCurrentUser = user.id === currentUser?.id;
                   return (
                     <tr
                       key={user.id || idx}

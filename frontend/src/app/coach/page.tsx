@@ -1,11 +1,13 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { getOrCreateUserSession, askCoach, scanReceipt } from '../../lib/api';
-import { MessageSquare, UploadCloud, Volume2, VolumeX, Sparkles, Send, FileText, ArrowRight, CheckCircle2 } from 'lucide-react';
+import useAuth from '../../hooks/useAuth';
+import LoadingSkeleton from '../../components/LoadingSkeleton';
+import { askCoach, scanReceipt } from '../../lib/api';
+import { MessageSquare, UploadCloud, Volume2, VolumeX, Sparkles, Send, ShieldAlert, CheckCircle2, ArrowRight } from 'lucide-react';
 
 export default function CoachPage() {
-  const [userId, setUserId] = useState('');
+  const { user, loading: authLoading } = useAuth(true);
   const [messages, setMessages] = useState<any[]>([
     { role: 'model', parts: [{ text: "Hello! I am your EcoTrack AI Coach. How can I help you build green habits or reduce your carbon emissions today?" }] }
   ]);
@@ -21,27 +23,14 @@ export default function CoachPage() {
   const [scanResult, setScanResult] = useState<any>(null);
 
   useEffect(() => {
-    async function loadUser() {
-      const session = await getOrCreateUserSession();
-      setUserId(session.id);
-    }
-    loadUser();
-  }, []);
-
-  useEffect(() => {
-    // Scroll to bottom on new message
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Handle Text to Speech
   const speakText = (text: string) => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-    
-    window.speechSynthesis.cancel(); // stop any current speech
-    
+    window.speechSynthesis.cancel();
     if (!voiceEnabled) return;
 
-    // Remove markdown symbols from speech
     const cleanText = text.replace(/[\*#_`\-]/g, '');
     const utterance = new SpeechSynthesisUtterance(cleanText);
     
@@ -54,18 +43,16 @@ export default function CoachPage() {
 
   const handleSend = async (textToSend?: string) => {
     const text = textToSend || inputMessage;
-    if (!text.trim() || !userId) return;
+    if (!text.trim() || !user) return;
 
     if (!textToSend) setInputMessage('');
 
-    // Append user message
     const userMsg = { role: 'user', parts: [{ text }] };
     const updatedMessages = [...messages, userMsg];
     setMessages(updatedMessages);
     setLoading(true);
 
     try {
-      // Map messages history to expected structure
       const history = messages.map(m => ({
         role: m.role,
         parts: m.parts
@@ -84,14 +71,12 @@ export default function CoachPage() {
     }
   };
 
-  // Pre-seeded questions
   const presetQuestions = [
     "How can I reduce my daily car carbon footprint?",
     "What are simple household energy saving hacks?",
     "How does a vegetarian diet reduce global emissions?"
   ];
 
-  // File Upload scanner
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setSelectedFile(e.target.files[0]);
@@ -100,18 +85,17 @@ export default function CoachPage() {
   };
 
   const handleUploadScan = async () => {
-    if (!selectedFile || !userId) return;
+    if (!selectedFile || !user) return;
 
     setScanning(true);
     try {
-      const res = await scanReceipt(userId, selectedFile);
+      const res = await scanReceipt(selectedFile);
       setScanResult(res);
       setSelectedFile(null);
 
       // Trigger navbar points update
       window.dispatchEvent(new Event('ecotrack-user-updated'));
 
-      // Inject system message in chat
       setMessages(prev => [
         ...prev,
         {
@@ -127,9 +111,13 @@ export default function CoachPage() {
     }
   };
 
+  if (authLoading) {
+    return <LoadingSkeleton />;
+  }
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 pt-6">
-      {/* Receipt Scanner Column */}
+      {/* Receipt Scanner */}
       <div className="glass-panel p-6 border-white/5 bg-gray-950/40 h-fit space-y-6">
         <div className="flex items-center gap-2 text-emerald-400 font-bold uppercase tracking-widest text-xs">
           <UploadCloud className="w-4 h-4" />
@@ -169,7 +157,7 @@ export default function CoachPage() {
           </button>
         )}
 
-        {/* Scan Results display */}
+        {/* Scan Results */}
         {scanResult && (
           <div className="bg-emerald-500/5 border border-emerald-500/10 p-5 rounded-xl space-y-4 animate-in fade-in duration-200">
             <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs uppercase tracking-wider">
@@ -196,7 +184,7 @@ export default function CoachPage() {
         )}
       </div>
 
-      {/* Coach Chatbot Column */}
+      {/* Coach Chatbot */}
       <div className="lg:col-span-2 glass-panel border-white/5 bg-gray-950/40 flex flex-col h-[75vh] relative overflow-hidden">
         {/* Chat Header */}
         <div className="border-b border-white/5 px-6 py-4 flex items-center justify-between bg-gray-900/20">
@@ -213,7 +201,6 @@ export default function CoachPage() {
             </div>
           </div>
 
-          {/* Voice synthesizers toggling */}
           <div className="flex items-center gap-3">
             {isSpeaking && (
               <div className="h-4 flex items-end">
@@ -257,7 +244,6 @@ export default function CoachPage() {
                       : 'bg-emerald-500 text-white rounded-tr-none'
                   }`}
                 >
-                  {/* Basic markdown renderer */}
                   {m.parts[0].text.split('\n').map((line: string, lIdx: number) => {
                     if (line.startsWith('### ')) {
                       return <h3 key={lIdx} className="font-extrabold text-base text-emerald-400 mt-2 mb-1">{line.replace('### ', '')}</h3>;
@@ -284,7 +270,7 @@ export default function CoachPage() {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Preset suggestions & Chat Inputs */}
+        {/* Inputs */}
         <div className="border-t border-white/5 p-4 space-y-4 bg-gray-900/10">
           {messages.length === 1 && (
             <div className="flex flex-col gap-2">

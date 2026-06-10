@@ -1,34 +1,21 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { getOrCreateUserSession, buyOffset } from '../../lib/api';
-import { ShoppingBag, Award, ShieldCheck, TreePine, Zap, Wind, CheckCircle2 } from 'lucide-react';
+import React, { useState } from 'react';
+import useAuth from '../../hooks/useAuth';
+import LoadingSkeleton from '../../components/LoadingSkeleton';
+import { buyOffset } from '../../lib/api';
+import { ShoppingBag, TreePine, Zap, Wind, CheckCircle2 } from 'lucide-react';
 
 export default function MarketplacePage() {
-  const [userId, setUserId] = useState('');
-  const [points, setPoints] = useState(0);
-  const [level, setLevel] = useState('Beginner');
-  const [loading, setLoading] = useState(true);
+  const { user, loading: authLoading, refetch: refetchUser } = useAuth(true);
   const [purchasing, setPurchasing] = useState<string | null>(null);
   const [txMessage, setTxMessage] = useState<string | null>(null);
 
-  const loadUserData = async () => {
-    const session = await getOrCreateUserSession();
-    setUserId(session.id);
-    setPoints(session.points);
-    setLevel(session.level);
-    setLoading(false);
-  };
-
-  useEffect(() => {
-    loadUserData();
-  }, []);
-
   const handlePurchase = async (projectId: string, cost: number, name: string) => {
-    if (!userId) return;
+    if (!user) return;
 
-    if (points < cost) {
-      alert(`Insufficient Eco Points. You have ${points} XP, but need ${cost} XP.`);
+    if (user.points < cost) {
+      alert(`Insufficient Eco Points. You have ${user.points} XP, but need ${cost} XP.`);
       return;
     }
 
@@ -36,14 +23,10 @@ export default function MarketplacePage() {
     setTxMessage(null);
 
     try {
-      const res = await buyOffset(userId, cost, name);
-      setPoints(res.user.points);
+      const res = await buyOffset(cost, name);
       
-      // Update local storage in current window frame
-      localStorage.setItem('ecotrack_user', JSON.stringify(res.user));
-      
-      // Dispatch updating navbar points
-      window.dispatchEvent(new Event('ecotrack-user-updated'));
+      // Update local storage user profile points
+      refetchUser();
 
       setTxMessage(`Successfully purchased offset project: ${name}! Spent ${cost} points.`);
     } catch (e: any) {
@@ -54,13 +37,8 @@ export default function MarketplacePage() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[50vh]">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-emerald-500 mb-4" />
-        <p className="text-gray-400 font-semibold text-sm">Loading offset listings...</p>
-      </div>
-    );
+  if (authLoading) {
+    return <LoadingSkeleton />;
   }
 
   const projects = [
@@ -114,11 +92,11 @@ export default function MarketplacePage() {
           </p>
         </div>
 
-        {/* User Balance card */}
+        {/* User Balance */}
         <div className="bg-white/5 border border-white/5 p-4 rounded-2xl shrink-0 text-center min-w-40">
           <span className="text-[10px] text-gray-400 uppercase font-black tracking-wider block">Your Balance</span>
-          <span className="text-3xl font-black text-emerald-400 block mt-1">{points} XP</span>
-          <span className="text-[10px] text-gray-500 font-bold mt-1.5 block uppercase tracking-widest">{level} Status</span>
+          <span className="text-3xl font-black text-emerald-400 block mt-1">{user?.points} XP</span>
+          <span className="text-[10px] text-gray-500 font-bold mt-1.5 block uppercase tracking-widest">{user?.level} Status</span>
         </div>
       </div>
 
@@ -133,7 +111,7 @@ export default function MarketplacePage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {projects.map((project) => {
           const Icon = project.icon;
-          const isAffordable = points >= project.cost;
+          const isAffordable = user ? user.points >= project.cost : false;
           const isPending = purchasing === project.id;
           
           return (
@@ -177,14 +155,6 @@ export default function MarketplacePage() {
             </div>
           );
         })}
-      </div>
-
-      <div className="glass-panel p-6 border-white/5 bg-gray-950/20 text-center max-w-xl mx-auto space-y-3">
-        <ShieldCheck className="w-10 h-10 text-emerald-400 mx-auto" />
-        <h3 className="text-base font-bold text-white">Verified Offsets Guarantee</h3>
-        <p className="text-gray-400 text-xs font-semibold leading-relaxed">
-          All carbon offsets on EcoTrack AI represent real, third-party audited environmental additions verified through standard Gold Standard or Verra register compliance.
-        </p>
       </div>
     </div>
   );

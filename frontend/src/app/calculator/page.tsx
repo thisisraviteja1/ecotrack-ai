@@ -1,13 +1,15 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getOrCreateUserSession, submitCalculation } from '../../lib/api';
+import useAuth from '../../hooks/useAuth';
+import LoadingSkeleton from '../../components/LoadingSkeleton';
+import { submitCalculation } from '../../lib/api';
 import { Car, Zap, Salad, ShoppingBag, Trash2, ArrowRight, ArrowLeft, Award, Sparkles } from 'lucide-react';
 
 export default function CalculatorPage() {
   const router = useRouter();
-  const [userId, setUserId] = useState<string>('');
+  const { user, loading: authLoading } = useAuth(true);
   const [step, setStep] = useState<number>(1);
   const [loading, setLoading] = useState<boolean>(false);
   const [result, setResult] = useState<any>(null);
@@ -15,23 +17,15 @@ export default function CalculatorPage() {
   // Form Fields
   const [formData, setFormData] = useState({
     transportMode: 'car',
-    travelDistance: 15, // km/day
-    electricity: 180,   // kWh/month
-    acUsage: 4,        // hours/day
+    travelDistance: 15,
+    electricity: 180,
+    acUsage: 4,
     diet: 'mixed',
     shoppingOnline: 4,
     shoppingFashion: 2,
     recyclingHabit: 'sometimes',
     plasticUsage: 'medium'
   });
-
-  useEffect(() => {
-    async function loadUser() {
-      const user = await getOrCreateUserSession();
-      setUserId(user.id);
-    }
-    loadUser();
-  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -46,12 +40,11 @@ export default function CalculatorPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userId) return;
+    if (!user) return;
 
     setLoading(true);
     try {
       const response = await submitCalculation({
-        userId,
         transportMode: formData.transportMode,
         travelDistance: Number(formData.travelDistance),
         electricity: Number(formData.electricity),
@@ -64,8 +57,8 @@ export default function CalculatorPage() {
       });
 
       setResult(response.calculation);
-
-      // Trigger navbar XP refresh
+      
+      // Dispatch updating navbar points
       window.dispatchEvent(new Event('ecotrack-user-updated'));
     } catch (error) {
       console.error('Submission error:', error);
@@ -74,6 +67,10 @@ export default function CalculatorPage() {
       setLoading(false);
     }
   };
+
+  if (authLoading) {
+    return <LoadingSkeleton />;
+  }
 
   const stepTitles = [
     'Transportation',
@@ -103,7 +100,7 @@ export default function CalculatorPage() {
               const isActive = step === idx + 1;
               const isPassed = step > idx + 1;
               return (
-                <div key={idx} className="flex-1 flex flex-col items-center">
+                <div key={idx} className="flex-1 flex flex-col items-center animate-in fade-in duration-300">
                   <div className={`w-9 h-9 rounded-full flex items-center justify-center border font-bold text-xs transition-all duration-300 ${
                     isActive ? 'bg-emerald-500 border-emerald-400 text-white shadow-lg shadow-emerald-500/25' :
                     isPassed ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400' :
@@ -125,12 +122,13 @@ export default function CalculatorPage() {
               <span>Step {step} of 5: {stepTitles[step - 1]}</span>
             </div>
 
-            {/* STEP 1: Transportation */}
+            {/* STEP 1 */}
             {step === 1 && (
               <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
                 <div className="flex flex-col gap-2">
-                  <label className="text-sm font-semibold text-gray-200">Primary mode of daily transport</label>
+                  <label htmlFor="transportMode-select" className="text-sm font-semibold text-gray-200">Primary mode of daily transport</label>
                   <select
+                    id="transportMode-select"
                     name="transportMode"
                     value={formData.transportMode}
                     onChange={handleChange}
@@ -146,11 +144,12 @@ export default function CalculatorPage() {
                 </div>
 
                 <div className="flex flex-col gap-2">
-                  <label className="text-sm font-semibold text-gray-200">
+                  <label htmlFor="travelDistance-range" className="text-sm font-semibold text-gray-200">
                     Average distance traveled daily ({formData.transportMode === 'flight' ? 'hours/month' : 'km/day'})
                   </label>
                   <div className="flex items-center gap-3">
                     <input
+                      id="travelDistance-range"
                       type="range"
                       name="travelDistance"
                       min="0"
@@ -167,13 +166,14 @@ export default function CalculatorPage() {
               </div>
             )}
 
-            {/* STEP 2: Energy Consumption */}
+            {/* STEP 2 */}
             {step === 2 && (
               <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
                 <div className="flex flex-col gap-2">
-                  <label className="text-sm font-semibold text-gray-200">Monthly electricity consumption (kWh)</label>
+                  <label htmlFor="electricity-range" className="text-sm font-semibold text-gray-200">Monthly electricity consumption (kWh)</label>
                   <div className="flex items-center gap-3">
                     <input
+                      id="electricity-range"
                       type="range"
                       name="electricity"
                       min="0"
@@ -186,13 +186,13 @@ export default function CalculatorPage() {
                       {formData.electricity} kWh
                     </span>
                   </div>
-                  <p className="text-[11px] text-gray-400 font-semibold">Average home consumes roughly 150 - 300 kWh monthly.</p>
                 </div>
 
                 <div className="flex flex-col gap-2">
-                  <label className="text-sm font-semibold text-gray-200">Air Conditioner usage (hours/day)</label>
+                  <label htmlFor="acUsage-range" className="text-sm font-semibold text-gray-200">Air Conditioner usage (hours/day)</label>
                   <div className="flex items-center gap-3">
                     <input
+                      id="acUsage-range"
                       type="range"
                       name="acUsage"
                       min="0"
@@ -209,12 +209,13 @@ export default function CalculatorPage() {
               </div>
             )}
 
-            {/* STEP 3: Diet Habits */}
+            {/* STEP 3 */}
             {step === 3 && (
               <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
                 <div className="flex flex-col gap-2">
-                  <label className="text-sm font-semibold text-gray-200">Primary dietary profile</label>
+                  <label htmlFor="diet-select" className="text-sm font-semibold text-gray-200">Primary dietary profile</label>
                   <select
+                    id="diet-select"
                     name="diet"
                     value={formData.diet}
                     onChange={handleChange}
@@ -225,19 +226,17 @@ export default function CalculatorPage() {
                     <option value="non-vegetarian">Meat Lover (High meat consumption)</option>
                   </select>
                 </div>
-                <div className="bg-emerald-500/5 border border-emerald-500/10 p-4 rounded-xl text-xs text-emerald-400 font-semibold leading-relaxed">
-                  Dietary choices shape carbon impact. A heavy meat diet produces nearly 4x the emissions of vegetarian food systems.
-                </div>
               </div>
             )}
 
-            {/* STEP 4: Shopping Habits */}
+            {/* STEP 4 */}
             {step === 4 && (
               <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
                 <div className="flex flex-col gap-2">
-                  <label className="text-sm font-semibold text-gray-200">Online shopping deliveries (packages/month)</label>
+                  <label htmlFor="shoppingOnline-range" className="text-sm font-semibold text-gray-200">Online shopping deliveries (packages/month)</label>
                   <div className="flex items-center gap-3">
                     <input
+                      id="shoppingOnline-range"
                       type="range"
                       name="shoppingOnline"
                       min="0"
@@ -253,9 +252,10 @@ export default function CalculatorPage() {
                 </div>
 
                 <div className="flex flex-col gap-2">
-                  <label className="text-sm font-semibold text-gray-200">Fast fashion purchases (clothing items/month)</label>
+                  <label htmlFor="shoppingFashion-range" className="text-sm font-semibold text-gray-200">Fast fashion purchases (clothing items/month)</label>
                   <div className="flex items-center gap-3">
                     <input
+                      id="shoppingFashion-range"
                       type="range"
                       name="shoppingFashion"
                       min="0"
@@ -272,12 +272,13 @@ export default function CalculatorPage() {
               </div>
             )}
 
-            {/* STEP 5: Waste Management */}
+            {/* STEP 5 */}
             {step === 5 && (
               <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
                 <div className="flex flex-col gap-2">
-                  <label className="text-sm font-semibold text-gray-200">Recycling and composting habits</label>
+                  <label htmlFor="recyclingHabit-select" className="text-sm font-semibold text-gray-200">Recycling and composting habits</label>
                   <select
+                    id="recyclingHabit-select"
                     name="recyclingHabit"
                     value={formData.recyclingHabit}
                     onChange={handleChange}
@@ -290,8 +291,9 @@ export default function CalculatorPage() {
                 </div>
 
                 <div className="flex flex-col gap-2">
-                  <label className="text-sm font-semibold text-gray-200">Plastic packaging usage level</label>
+                  <label htmlFor="plasticUsage-select" className="text-sm font-semibold text-gray-200">Plastic packaging usage level</label>
                   <select
+                    id="plasticUsage-select"
                     name="plasticUsage"
                     value={formData.plasticUsage}
                     onChange={handleChange}
@@ -343,7 +345,7 @@ export default function CalculatorPage() {
           </div>
         </form>
       ) : (
-        /* Calculator Results Display */
+        /* Results */
         <div className="glass-panel p-6 md:p-8 border-emerald-500/20 bg-gray-950/40 text-center animate-in zoom-in-95 duration-300">
           <div className="inline-flex items-center justify-center bg-emerald-500/10 border border-emerald-500/25 p-3.5 rounded-full mb-4">
             <Award className="w-8 h-8 text-emerald-400" />

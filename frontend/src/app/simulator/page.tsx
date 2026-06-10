@@ -1,26 +1,28 @@
 'use client';
 
 import React, { useState } from 'react';
+import useAuth from '../../hooks/useAuth';
+import LoadingSkeleton from '../../components/LoadingSkeleton';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, Leaf, Car, ShieldAlert, Award } from 'lucide-react';
+import { Sparkles, Leaf, Car, Award } from 'lucide-react';
 
 export default function SimulatorPage() {
+  const { loading: authLoading } = useAuth(true);
   const [treeCount, setTreeCount] = useState<number>(5);
 
-  // Carbon Offsets Factor: 1 mature tree absorbs ~22 kg CO2 per year
   const annualOffsetPerTree = 22;
-  const lifetimeOffsetPerTree = 220; // assumed 10 years lifespan average for calculations
+  const lifetimeOffsetPerTree = 220;
 
   const annualOffsetTotal = treeCount * annualOffsetPerTree;
   const lifetimeOffsetTotal = treeCount * lifetimeOffsetPerTree;
 
-  // Equivalency calculations:
-  // - 1 kg CO2 is emitted by driving ~5.5 km in a gasoline car
-  // - 1 kg CO2 is emitted by charging ~120 smartphones
-  // - 1 kg CO2 is emitted by manufacturing ~20 plastic bottles
   const carKmEquivalent = Math.round(annualOffsetTotal * 5.5);
   const smartphonesCharged = Math.round(annualOffsetTotal * 122);
   const plasticBottlesSaved = Math.round(annualOffsetTotal * 20);
+
+  if (authLoading) {
+    return <LoadingSkeleton />;
+  }
 
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
@@ -31,7 +33,7 @@ export default function SimulatorPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Controls and Calculations */}
+        {/* Offset Calculator */}
         <div className="glass-panel p-6 border-white/5 bg-gray-950/40 h-fit space-y-6">
           <div className="flex items-center gap-2 text-emerald-400 font-bold uppercase tracking-widest text-xs">
             <Leaf className="w-4 h-4" />
@@ -69,7 +71,6 @@ export default function SimulatorPage() {
             </div>
           </div>
 
-          {/* Environmental Equivalency list */}
           <div className="border-t border-white/5 pt-6 space-y-4">
             <h3 className="text-xs font-bold text-gray-300 uppercase tracking-widest">Offset Equivalencies</h3>
             
@@ -106,7 +107,7 @@ export default function SimulatorPage() {
           </div>
         </div>
 
-        {/* Visual Canvas Column */}
+        {/* Canvas Forest */}
         <div className="lg:col-span-2 glass-panel p-6 border-white/5 bg-gray-950/40 min-h-[50vh] flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between border-b border-white/5 pb-4">
@@ -120,7 +121,6 @@ export default function SimulatorPage() {
             </p>
           </div>
 
-          {/* Canvas Forest rendering grid */}
           <div className="my-6 border border-white/5 bg-gray-900/30 rounded-2xl p-6 min-h-[350px] max-h-[420px] overflow-y-auto grid grid-cols-5 sm:grid-cols-10 gap-4 place-items-center relative">
             <div className="absolute inset-0 bg-gradient-to-b from-transparent to-emerald-950/5 pointer-events-none" />
             
@@ -135,12 +135,9 @@ export default function SimulatorPage() {
                   className="relative group cursor-pointer"
                 >
                   <svg className="w-10 h-12 text-emerald-400 hover:text-emerald-300 drop-shadow-[0_4px_6px_rgba(16,185,129,0.2)] hover:scale-110 transition-all duration-200" viewBox="0 0 24 24" fill="currentColor">
-                    {/* Tree Crown */}
                     <path d="M12 2L4 12h5v6h6v-6h5L12 2z" />
-                    {/* Trunk */}
                     <rect x="11" y="18" width="2" height="4" fill="#78350f" />
                   </svg>
-                  {/* Tooltip trigger */}
                   <div className="absolute bottom-full left-1/2 -translate-x-1/2 bg-gray-950 border border-white/10 px-2 py-1 rounded text-[8px] font-black text-gray-300 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none mb-1 z-10">
                     Sapling #{idx + 1} (+22kg/yr)
                   </div>

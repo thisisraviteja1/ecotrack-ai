@@ -1,14 +1,14 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { getOrCreateUserSession, submitHabits, getChallenges, joinChallenge, claimChallengeReward, getDashboardStats } from '../../lib/api';
-import { CheckSquare, Square, Calendar, Trophy, Award, Sparkles, ChevronRight, Activity, ArrowRight, Zap } from 'lucide-react';
+import useAuth from '../../hooks/useAuth';
+import LoadingSkeleton from '../../components/LoadingSkeleton';
+import { submitHabits, getChallenges, joinChallenge, claimChallengeReward, getDashboardStats } from '../../lib/api';
+import { CheckSquare, Square, Trophy, Award, Sparkles, ChevronRight, Activity, CheckCircle2 } from 'lucide-react';
 
 export default function ChallengesPage() {
-  const [userId, setUserId] = useState('');
+  const { user, loading: authLoading, refetch: refetchUser } = useAuth(true);
   const [loading, setLoading] = useState(true);
-  const [userPoints, setUserPoints] = useState(0);
-  const [userLevel, setUserLevel] = useState('Beginner');
   
   // Habits state
   const [habits, setHabits] = useState({
@@ -26,17 +26,11 @@ export default function ChallengesPage() {
   const [completedChallenges, setCompletedChallenges] = useState<any[]>([]);
 
   const loadPageData = async () => {
+    if (!user) return;
     try {
-      const session = await getOrCreateUserSession();
-      setUserId(session.id);
-      setUserPoints(session.points);
-      setUserLevel(session.level);
+      const stats = await getDashboardStats();
       
-      const stats = await getDashboardStats(session.id);
-      
-      // Load habits if recorded for today
       if (stats.habits && stats.habits.length > 0) {
-        // Find today's habits
         const todayStr = new Date().toDateString();
         const todayHabit = stats.habits.find((h: any) => new Date(h.date).toDateString() === todayStr);
         if (todayHabit) {
@@ -64,39 +58,37 @@ export default function ChallengesPage() {
   };
 
   useEffect(() => {
-    loadPageData();
-  }, []);
+    if (user) {
+      loadPageData();
+    }
+  }, [user]);
 
   const handleHabitToggle = async (key: keyof typeof habits) => {
-    if (!userId) return;
+    if (!user) return;
 
     const updatedHabits = {
       ...habits,
       [key]: !habits[key]
     };
     
-    // Optimistic UI update
     setHabits(updatedHabits);
 
     try {
-      const res = await submitHabits(userId, updatedHabits);
-      setUserPoints(res.user.points);
-      setUserLevel(res.user.level);
-      // Trigger navbar points update
-      window.dispatchEvent(new Event('ecotrack-user-updated'));
+      await submitHabits(updatedHabits);
+      // Refresh user points in layout
+      refetchUser();
     } catch (e) {
       console.error(e);
       alert('Failed to save habit checklist. Ensure backend is running.');
-      // Revert state
       setHabits(habits);
     }
   };
 
   const handleJoinChallenge = async (challengeId: string) => {
-    if (!userId) return;
+    if (!user) return;
 
     try {
-      await joinChallenge(userId, challengeId);
+      await joinChallenge(challengeId);
       await loadPageData();
     } catch (e) {
       console.error(e);
@@ -106,12 +98,8 @@ export default function ChallengesPage() {
 
   const handleClaimReward = async (userChallengeId: string) => {
     try {
-      const res = await claimChallengeReward(userChallengeId);
-      setUserPoints(res.user.points);
-      setUserLevel(res.user.level);
-      
-      // Trigger navbar points update
-      window.dispatchEvent(new Event('ecotrack-user-updated'));
+      await claimChallengeReward(userChallengeId);
+      refetchUser();
       await loadPageData();
     } catch (e) {
       console.error(e);
@@ -119,13 +107,8 @@ export default function ChallengesPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[50vh]">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-emerald-500 mb-4" />
-        <p className="text-gray-400 font-semibold text-sm">Synchronizing your missions...</p>
-      </div>
-    );
+  if (authLoading || loading) {
+    return <LoadingSkeleton />;
   }
 
   const activeChallengeIds = activeChallenges.map(ac => ac.challengeId);
@@ -201,7 +184,7 @@ export default function ChallengesPage() {
             
             <div className="flex items-center gap-1 text-xs font-bold text-gray-400">
               <span>Current Status:</span>
-              <span className="text-amber-400 font-extrabold">{userLevel}</span>
+              <span className="text-amber-400 font-extrabold">{user?.level}</span>
             </div>
           </div>
 
@@ -213,7 +196,7 @@ export default function ChallengesPage() {
           </div>
         </div>
 
-        {/* Active Enrolled Challenges */}
+        {/* Active Challenges */}
         {activeChallenges.length > 0 && (
           <div className="space-y-4">
             <h3 className="text-xs font-black text-emerald-400 uppercase tracking-widest pl-1">Active Quests In Progress</h3>
@@ -246,7 +229,7 @@ export default function ChallengesPage() {
           </div>
         )}
 
-        {/* Available Challenges to Join */}
+        {/* Available Challenges */}
         <div className="space-y-4">
           <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest pl-1">Available Quests Directory</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -291,26 +274,5 @@ export default function ChallengesPage() {
         </div>
       </div>
     </div>
-  );
-}
-
-// Inline fallback icon for completed challenges
-function CheckCircle2(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z" />
-      <path d="m9 12 2 2 4-4" />
-    </svg>
   );
 }

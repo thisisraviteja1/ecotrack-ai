@@ -2,24 +2,12 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { ArrowRight, Leaf, Sparkles, Award, BarChart3, MessageSquare, ShieldCheck, Zap, Globe } from 'lucide-react';
-import { motion } from 'framer-motion';
+import useAuth from '../hooks/useAuth';
+import { ArrowRight, Leaf, Sparkles, Award, BarChart3, MessageSquare, Globe, User } from 'lucide-react';
 
 export default function LandingPage() {
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: {
-        staggerChildren: 0.15
-      }
-    }
-  };
-
-  const itemVariants = {
-    hidden: { y: 20, opacity: 0 },
-    visible: { y: 0, opacity: 1, transition: { duration: 0.5, ease: 'easeOut' } }
-  };
+  // Check auth but do not force redirect
+  const { user, loading } = useAuth(false);
 
   const features = [
     {
@@ -68,14 +56,14 @@ export default function LandingPage() {
 
   return (
     <div className="relative overflow-hidden pt-12 md:pt-20">
-      {/* Background Glowing Orbs */}
+      {/* Background Orbs */}
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -z-10 w-[600px] h-[600px] bg-emerald-500/5 blur-[120px] rounded-full pointer-events-none" />
 
       {/* Hero Section */}
       <div className="max-w-4xl mx-auto text-center px-4 mb-20">
-        <div className="inline-flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/25 px-4 py-1.5 rounded-full mb-6 animate-pulse">
+        <div className="inline-flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/25 px-4 py-1.5 rounded-full mb-6">
           <Leaf className="w-4 h-4 text-emerald-400" />
-          <span className="text-xs font-bold text-emerald-300 tracking-wider uppercase">Google Hackathon Winner Idea</span>
+          <span className="text-xs font-bold text-emerald-300 tracking-wider uppercase">Enterprise Sustainability platform</span>
         </div>
 
         <h1 className="text-4xl sm:text-6xl font-black tracking-tight text-white mb-6 leading-[1.1]">
@@ -88,21 +76,34 @@ export default function LandingPage() {
           EcoTrack AI puts carbon transparency in your pocket. Calculate emissions, build sustainable habits, receive Gemini-powered advice, and sponsor real-world offsets.
         </p>
 
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-          <Link
-            href="/calculator"
-            className="w-full sm:w-auto px-8 py-4 bg-emerald-500 hover:bg-emerald-400 text-white font-extrabold rounded-xl shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/35 transition-all duration-300 flex items-center justify-center gap-2"
-          >
-            <span>Calculate Footprint</span>
-            <ArrowRight className="w-5 h-5" />
-          </Link>
-          <Link
-            href="/dashboard"
-            className="w-full sm:w-auto px-8 py-4 bg-white/5 hover:bg-white/10 text-white border border-white/10 hover:border-white/20 font-extrabold rounded-xl transition-all duration-300 flex items-center justify-center gap-2"
-          >
-            <span>Launch Dashboard</span>
-          </Link>
-        </div>
+        {loading ? (
+          <div className="h-14 flex items-center justify-center">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-emerald-500" />
+          </div>
+        ) : (
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <Link
+              href={user ? "/calculator" : "/register"}
+              className="w-full sm:w-auto px-8 py-4 bg-emerald-500 hover:bg-emerald-400 text-white font-extrabold rounded-xl shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/35 transition-all duration-300 flex items-center justify-center gap-2"
+            >
+              <span>{user ? "Calculate Footprint" : "Get Started Free"}</span>
+              <ArrowRight className="w-5 h-5" />
+            </Link>
+            <Link
+              href={user ? "/dashboard" : "/login"}
+              className="w-full sm:w-auto px-8 py-4 bg-white/5 hover:bg-white/10 text-white border border-white/10 hover:border-white/20 font-extrabold rounded-xl transition-all duration-300 flex items-center justify-center gap-2"
+            >
+              {user ? (
+                <>
+                  <User className="w-4 h-4" />
+                  <span>Go to Dashboard</span>
+                </>
+              ) : (
+                <span>Sign In</span>
+              )}
+            </Link>
+          </div>
+        )}
       </div>
 
       {/* Statistics Row */}
@@ -126,7 +127,7 @@ export default function LandingPage() {
       {/* Features Grid */}
       <div className="max-w-6xl mx-auto px-4 mb-24">
         <div className="text-center mb-16">
-          <h2 className="text-3xl font-extrabold text-white">Full-Stack Features Built for Action</h2>
+          <h2 className="text-3xl font-extrabold text-white animate-fade-in">Full-Stack Features Built for Action</h2>
           <p className="text-gray-400 font-medium mt-3 max-w-lg mx-auto">
             A comprehensive suite of tools designed to guide you from awareness to measurable impact.
           </p>
@@ -166,29 +167,6 @@ export default function LandingPage() {
               </div>
             );
           })}
-        </div>
-      </div>
-
-      {/* Interactive Value Proposition Section */}
-      <div className="max-w-5xl mx-auto px-4 mb-20">
-        <div className="glass-panel p-8 md:p-12 border-emerald-500/10 relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-8 bg-gradient-to-r from-emerald-950/20 to-transparent">
-          <div className="absolute top-0 right-0 -translate-y-1/2 translate-x-1/2 w-64 h-64 bg-emerald-500/10 blur-[80px] rounded-full pointer-events-none" />
-          
-          <div className="max-w-xl">
-            <h3 className="text-2xl md:text-3xl font-extrabold text-white leading-tight">
-              Ready to take your first climate action?
-            </h3>
-            <p className="text-gray-400 font-semibold mt-3 leading-relaxed text-sm md:text-base">
-              Calculate your initial carbon score in under 3 minutes, then log your daily habits to watch your score increase and earn Green Points.
-            </p>
-          </div>
-          <Link
-            href="/calculator"
-            className="shrink-0 px-6 py-3.5 bg-emerald-500 hover:bg-emerald-400 text-white font-extrabold rounded-xl shadow-md transition-all duration-300 flex items-center gap-2"
-          >
-            <span>Start Free Calculator</span>
-            <ArrowRight className="w-4 h-4" />
-          </Link>
         </div>
       </div>
     </div>

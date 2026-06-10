@@ -1,11 +1,14 @@
 import { PrismaClient } from '@prisma/client';
+import bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
 
 async function main() {
   console.log('Seeding database...');
 
-  // Clean old challenges
+  // Clean old entries
+  await prisma.auditLog.deleteMany({});
+  await prisma.refreshToken.deleteMany({});
   await prisma.userChallenge.deleteMany({});
   await prisma.challenge.deleteMany({});
   await prisma.dailyHabit.deleteMany({});
@@ -58,6 +61,10 @@ async function main() {
     });
   }
 
+  // Generate a standard test password hash
+  const salt = await bcrypt.genSalt(10);
+  const passwordHash = await bcrypt.hash('password123!A', salt);
+
   // Seed Users for Leaderboard
   const users = [
     { email: 'sarah.eco@example.com', name: 'Sarah Jenkins', points: 1250, level: 'Climate Champion' },
@@ -69,11 +76,18 @@ async function main() {
 
   for (const user of users) {
     const createdUser = await prisma.user.create({
-      data: user
+      data: {
+        email: user.email,
+        name: user.name,
+        passwordHash,
+        points: user.points,
+        level: user.level,
+        role: 'USER'
+      }
     });
 
-    // Add calculations for seed users to populate dashboard graphs
-    const totalCO2 = Math.random() * 300 + 150; // 150 - 450 kg CO2 / month
+    // Add calculations
+    const totalCO2 = Math.random() * 300 + 150;
     await prisma.calculation.create({
       data: {
         userId: createdUser.id,
@@ -97,7 +111,7 @@ async function main() {
       }
     });
 
-    // Add daily habit entries for past few days
+    // Add habits logs
     for (let i = 0; i < 5; i++) {
       const date = new Date();
       date.setDate(date.getDate() - i);

@@ -1,11 +1,13 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { AuthenticatedRequest } from '../middleware/auth';
 import * as geminiService from '../services/gemini';
+import { calculationSchema, habitsSchema } from '../utils/validation';
+import { calculateCarbonMath } from '../utils/carbonMath';
 import PDFDocument from 'pdfkit';
 
 const prisma = new PrismaClient();
 
-// Level thresholds
 const LEVEL_EXPLORER = 300;
 const LEVEL_HERO = 700;
 const LEVEL_CHAMPION = 1200;
@@ -17,137 +19,117 @@ function getUserLevel(points: number): string {
   return 'Beginner';
 }
 
-/**
- * Register or fetch user profile.
- */
-export async function registerOrGetUser(req: Request, res: Response): Promise<void> {
+async function writeAudit(userId: string | null, action: string, details: string, ipAddress?: string) {
   try {
-    const { email, name } = req.body;
-    if (!email) {
-      res.status(400).json({ error: 'Email is required' });
+    await prisma.auditLog.create({
+      data: {
+        userId,
+        action,
+        details,
+        ipAddress: ipAddress || null
+      }
+    });
+  } catch (err) {
+    console.error('Audit logging failed:', err);
+  }
+}
+
+/**
+ * Fetch authenticated user profile.
+ */
+export async function getProfile(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Unauthorized' });
       return;
     }
 
-    let user = await prisma.user.findUnique({
-      where: { email }
+    const user = await prisma.user.findFirst({
+      where: { id: req.user.id, deletedAt: null }
     });
 
     if (!user) {
-      user = await prisma.user.create({
-        data: {
-          email,
-          name: name || email.split('@')[0],
-          points: 0,
-          level: 'Beginner'
-        }
-      });
-      console.log(`Created new user: ${user.email}`);
+      res.status(404).json({ error: 'User profile not found' });
+      return;
     }
 
-    res.json(user);
+    res.json({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      points: user.points,
+      level: user.level
+    });
   } catch (error: any) {
-    console.error('Register User Error:', error);
-    res.status(500).json({ error: error.message });
+    console.error('Get Profile Error:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 }
 
 /**
  * Calculate carbon footprint emissions.
- * Standard emissions factors (kg CO2):
- * - Car: ~0.18 kg per km
- * - Bike: ~0.08 kg per km
- * - Bus: ~0.06 kg per km
- * - Train/Metro: ~0.04 kg per km
- * - Walking/Cycling: 0 kg per km
- * - Flight: ~150 kg per hour or ~0.15 kg per km (assume flight hours or average flight allocation: e.g. ~200 kg CO2 / month average for active flyers)
- * - Electricity: ~0.4 kg per kWh
- * - AC: ~0.8 kg per hour (assumes 1.5 kW compressor running)
- * - Diet vegetarian: ~60 kg/month, Mixed: ~150 kg/month, Non-veg: ~250 kg/month
- * - Online Shopping: ~3 kg per purchase (packaging + shipping)
- * - Fast fashion: ~15 kg per purchase
- * - Recycling Habit: Always (-15 kg), Sometimes (-5 kg), Never (0 kg)
- * - Plastic Usage: High (20 kg), Medium (10 kg), Low (2 kg)
  */
-export async function calculateFootprint(req: Request, res: Response): Promise<void> {
+export async function calculateFootprint(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
-    const {
-      userId,
-      transportMode,
-      travelDistance, // km/day
-      electricity,    // kWh/month
-      acUsage,        // hours/day
-      diet,           // vegetarian, mixed, non-vegetarian
-      shoppingOnline,  // purchases/month
-      shoppingFashion, // purchases/month
-      recyclingHabit,  // always, sometimes, never
-      plasticUsage    // high, medium, low
-    } = req.body;
-
-    if (!userId) {
-      res.status(400).json({ error: 'userId is required' });
+    if (!req.user) {
+      res.status(401).json({ error: 'Unauthorized' });
       return;
     }
 
-    // Transport emissions (Monthly = Daily * 30 * Factor)
-    let transportFactor = 0.18; // car default
-    if (transportMode === 'bike') transportFactor = 0.08;
-    else if (transportMode === 'bus') transportFactor = 0.06;
-    else if (transportMode === 'train' || transportMode === 'metro') transportFactor = 0.04;
-    else if (transportMode === 'walking' || transportMode === 'cycling') transportFactor = 0.0;
-    else if (transportMode === 'flight') transportFactor = 0.25;
+    const validatedData = calculationSchema.parse(req.body);
+    const {
+      transportMode,
+      travelDistance,
+      electricity,
+      acUsage,
+      diet,
+      shoppingOnline,
+      shoppingFashion,
+      recyclingHabit,
+      plasticUsage
+    } = validatedData;
 
-    const transportCO2 = travelDistance * 30 * transportFactor;
+    const userId = req.user.id;
 
-    // Energy emissions
-    const energyElectricityCO2 = electricity * 0.4;
-    const energyACCO2 = acUsage * 30 * 0.8;
-    const energyCO2 = energyElectricityCO2 + energyACCO2;
+    const {
+      transportCO2,
+      energyCO2,
+      foodCO2,
+      shoppingCO2,
+      wasteCO2,
+      totalCO2,
+      carbonScore,
+      rating
+    } = calculateCarbonMath({
+      transportMode,
+      travelDistance,
+      electricity,
+      acUsage,
+      diet,
+      shoppingOnline,
+      shoppingFashion,
+      recyclingHabit,
+      plasticUsage
+    });
 
-    // Food emissions
-    let foodCO2 = 150; // mixed
-    if (diet === 'vegetarian') foodCO2 = 60;
-    else if (diet === 'non-vegetarian') foodCO2 = 250;
-
-    // Shopping emissions
-    const shoppingCO2 = (shoppingOnline * 3) + (shoppingFashion * 15);
-
-    // Waste emissions
-    let wasteBase = 10;
-    if (plasticUsage === 'high') wasteBase += 20;
-    else if (plasticUsage === 'medium') wasteBase += 10;
-    else if (plasticUsage === 'low') wasteBase += 2;
-
-    let recyclingDeduction = 0;
-    if (recyclingHabit === 'always') recyclingDeduction = -15;
-    else if (recyclingHabit === 'sometimes') recyclingDeduction = -5;
-
-    const wasteCO2 = Math.max(0, wasteBase + recyclingDeduction);
-
-    const totalCO2 = transportCO2 + energyCO2 + foodCO2 + shoppingCO2 + wasteCO2;
-
-    // Carbon Score calculation: 100 is excellent (low emissions), 0 is poor (high emissions)
-    // Average monthly emission is ~400 kg. Score 100 for < 100 kg, scale down to 0 at 700 kg.
-    const carbonScore = Math.max(1, Math.min(100, Math.round(100 - (totalCO2 / 7.5))));
-
-    // Rating
-    let rating = 'F';
-    if (carbonScore >= 85) rating = 'A';
-    else if (carbonScore >= 70) rating = 'B';
-    else if (carbonScore >= 55) rating = 'C';
-    else if (carbonScore >= 40) rating = 'D';
-    else if (carbonScore >= 25) rating = 'E';
+    // Soft-delete older calculations for user
+    await prisma.calculation.updateMany({
+      where: { userId, deletedAt: null },
+      data: { deletedAt: new Date() }
+    });
 
     // Save calculation
     const calculation = await prisma.calculation.create({
       data: {
         userId,
         transportMode,
-        travelDistance: parseFloat(travelDistance) || 0,
-        electricity: parseFloat(electricity) || 0,
-        acUsage: parseFloat(acUsage) || 0,
+        travelDistance,
+        electricity,
+        acUsage,
         diet,
-        shoppingOnline: parseInt(shoppingOnline) || 0,
-        shoppingFashion: parseInt(shoppingFashion) || 0,
+        shoppingOnline,
+        shoppingFashion,
         recyclingHabit,
         plasticUsage,
         transportCO2,
@@ -161,41 +143,47 @@ export async function calculateFootprint(req: Request, res: Response): Promise<v
       }
     });
 
-    // Add points for completing calculation (one-time or updates)
-    const user = await prisma.user.findUnique({ where: { id: userId } });
+    // Update user points
+    const user = await prisma.user.findFirst({ where: { id: userId, deletedAt: null } });
     if (user) {
       const updatedUser = await prisma.user.update({
         where: { id: userId },
         data: {
-          points: user.points + 50, // 50 eco points
+          points: user.points + 50,
           level: getUserLevel(user.points + 50)
         }
       });
+      await writeAudit(userId, 'SUBMIT_CALCULATION', `Calculated carbon score: ${carbonScore}, rating: ${rating}`, req.ip);
       res.json({ calculation, pointsAwarded: 50, updatedUser });
       return;
     }
 
     res.json({ calculation, pointsAwarded: 0 });
   } catch (error: any) {
+    if (error.errors) {
+      res.status(400).json({ error: error.errors[0].message });
+      return;
+    }
     console.error('Calculate Carbon Footprint Error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 }
 
 /**
- * Get dashboard information.
+ * Get dashboard stats.
  */
-export async function getDashboard(req: Request, res: Response): Promise<void> {
+export async function getDashboard(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
-    const { userId } = req.params;
-    if (!userId) {
-      res.status(400).json({ error: 'userId is required' });
+    if (!req.user) {
+      res.status(401).json({ error: 'Unauthorized' });
       return;
     }
 
+    const userId = req.user.id;
+
     // Get User profile
-    const user = await prisma.user.findUnique({
-      where: { id: userId }
+    const user = await prisma.user.findFirst({
+      where: { id: userId, deletedAt: null }
     });
 
     if (!user) {
@@ -205,7 +193,7 @@ export async function getDashboard(req: Request, res: Response): Promise<void> {
 
     // Get latest calculation
     const calculations = await prisma.calculation.findMany({
-      where: { userId },
+      where: { userId, deletedAt: null },
       orderBy: { createdAt: 'desc' },
       take: 1
     });
@@ -233,37 +221,40 @@ export async function getDashboard(req: Request, res: Response): Promise<void> {
     // AI prediction
     const prediction = await geminiService.predictEmissions(latestCalc, habits);
 
-    // Calculate dynamic reduction percent (baseline vs recommended)
-    let reductionPercentage = 0;
-    if (latestCalc) {
-      reductionPercentage = prediction.reductionPercent;
-    }
-
     res.json({
-      user,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        points: user.points,
+        level: user.level
+      },
       latestCalculation: latestCalc,
       habits,
       activeChallenges: userChallenges.filter((uc: any) => uc.status === 'IN_PROGRESS'),
       completedChallenges: userChallenges.filter((uc: any) => uc.status === 'COMPLETED'),
       prediction,
-      reductionPercentage
+      reductionPercentage: latestCalc ? prediction.reductionPercent : 0
     });
   } catch (error: any) {
     console.error('Dashboard Fetch Error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 }
 
 /**
- * Toggle or check-in daily habits.
+ * Toggle daily habits.
  */
-export async function updateDailyHabits(req: Request, res: Response): Promise<void> {
+export async function updateDailyHabits(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
-    const { userId, habits } = req.body; // habits: { usedBicycle, avoidedPlastic, usedPublicTransport, savedElectricity, recycledWaste, carpooled }
-    if (!userId) {
-      res.status(400).json({ error: 'userId is required' });
+    if (!req.user) {
+      res.status(401).json({ error: 'Unauthorized' });
       return;
     }
+
+    const validatedData = habitsSchema.parse(req.body);
+    const userId = req.user.id;
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -284,12 +275,12 @@ export async function updateDailyHabits(req: Request, res: Response): Promise<vo
     const oldScore = dailyHabit ? dailyHabit.pointsEarned : 0;
     let newScore = 0;
 
-    if (habits.usedBicycle) newScore += 10;
-    if (habits.avoidedPlastic) newScore += 10;
-    if (habits.usedPublicTransport) newScore += 10;
-    if (habits.savedElectricity) newScore += 10;
-    if (habits.recycledWaste) newScore += 10;
-    if (habits.carpooled) newScore += 10;
+    if (validatedData.usedBicycle) newScore += 10;
+    if (validatedData.avoidedPlastic) newScore += 10;
+    if (validatedData.usedPublicTransport) newScore += 10;
+    if (validatedData.savedElectricity) newScore += 10;
+    if (validatedData.recycledWaste) newScore += 10;
+    if (validatedData.carpooled) newScore += 10;
 
     pointsAwarded = newScore - oldScore;
 
@@ -297,7 +288,7 @@ export async function updateDailyHabits(req: Request, res: Response): Promise<vo
       dailyHabit = await prisma.dailyHabit.update({
         where: { id: dailyHabit.id },
         data: {
-          ...habits,
+          ...validatedData,
           pointsEarned: newScore
         }
       });
@@ -306,14 +297,14 @@ export async function updateDailyHabits(req: Request, res: Response): Promise<vo
         data: {
           userId,
           date: new Date(),
-          ...habits,
+          ...validatedData,
           pointsEarned: newScore
         }
       });
     }
 
     // Update user points
-    const user = await prisma.user.findUnique({ where: { id: userId } });
+    const user = await prisma.user.findFirst({ where: { id: userId, deletedAt: null } });
     if (user && pointsAwarded !== 0) {
       const updatedUser = await prisma.user.update({
         where: { id: userId },
@@ -322,40 +313,52 @@ export async function updateDailyHabits(req: Request, res: Response): Promise<vo
           level: getUserLevel(Math.max(0, user.points + pointsAwarded))
         }
       });
+      await writeAudit(userId, 'UPDATE_HABITS', `Habit check-in: +${pointsAwarded} XP`, req.ip);
       res.json({ dailyHabit, pointsAwarded, user: updatedUser });
       return;
     }
 
     res.json({ dailyHabit, pointsAwarded, user });
   } catch (error: any) {
+    if (error.errors) {
+      res.status(400).json({ error: error.errors[0].message });
+      return;
+    }
     console.error('Habit Update Error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 }
 
 /**
  * List challenges.
  */
-export async function getChallenges(req: Request, res: Response): Promise<void> {
+export async function getChallenges(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const challenges = await prisma.challenge.findMany();
     res.json(challenges);
   } catch (error: any) {
     console.error('Get Challenges Error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 }
 
 /**
  * Join challenge.
  */
-export async function joinChallenge(req: Request, res: Response): Promise<void> {
+export async function joinChallenge(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
-    const { userId, challengeId } = req.body;
-    if (!userId || !challengeId) {
-      res.status(400).json({ error: 'userId and challengeId are required' });
+    if (!req.user) {
+      res.status(401).json({ error: 'Unauthorized' });
       return;
     }
+
+    const { challengeId } = req.body;
+    if (!challengeId) {
+      res.status(400).json({ error: 'challengeId is required' });
+      return;
+    }
+
+    const userId = req.user.id;
 
     // Check if user is already in this challenge
     const existing = await prisma.userChallenge.findFirst({
@@ -376,18 +379,24 @@ export async function joinChallenge(req: Request, res: Response): Promise<void> 
       include: { challenge: true }
     });
 
+    await writeAudit(userId, 'JOIN_CHALLENGE', `Joined challenge ID: ${challengeId}`, req.ip);
     res.json(userChallenge);
   } catch (error: any) {
     console.error('Join Challenge Error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 }
 
 /**
  * Complete challenge and claim points.
  */
-export async function completeChallenge(req: Request, res: Response): Promise<void> {
+export async function completeChallenge(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
     const { userChallengeId } = req.body;
     if (!userChallengeId) {
       res.status(400).json({ error: 'userChallengeId is required' });
@@ -399,8 +408,8 @@ export async function completeChallenge(req: Request, res: Response): Promise<vo
       include: { challenge: true, user: true }
     });
 
-    if (!uc) {
-      res.status(404).json({ error: 'Enrolled challenge not found' });
+    if (!uc || uc.userId !== req.user.id) {
+      res.status(404).json({ error: 'Enrolled challenge not found or unauthorized' });
       return;
     }
 
@@ -428,17 +437,18 @@ export async function completeChallenge(req: Request, res: Response): Promise<vo
       }
     });
 
+    await writeAudit(req.user.id, 'COMPLETE_CHALLENGE', `Completed challenge: ${uc.challenge.title}, +${rewardPoints} XP`, req.ip);
     res.json({ userChallenge: updatedUc, pointsAwarded: rewardPoints, user: updatedUser });
   } catch (error: any) {
     console.error('Complete Challenge Error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 }
 
 /**
  * Eco Coach Chatbot endpoint.
  */
-export async function askCoach(req: Request, res: Response): Promise<void> {
+export async function askCoach(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const { history, message } = req.body;
     if (!message) {
@@ -451,27 +461,27 @@ export async function askCoach(req: Request, res: Response): Promise<void> {
     res.json({ reply });
   } catch (error: any) {
     console.error('Ask Coach Error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 }
 
 /**
  * Receipt Scanner endpoint.
  */
-export async function uploadReceipt(req: Request, res: Response): Promise<void> {
+export async function uploadReceipt(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
-    const file = req.file;
-    const { userId } = req.body;
+    if (!req.user) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
 
+    const file = req.file;
     if (!file) {
       res.status(400).json({ error: 'No file uploaded' });
       return;
     }
-    if (!userId) {
-      res.status(400).json({ error: 'userId is required' });
-      return;
-    }
 
+    const userId = req.user.id;
     const result = await geminiService.scanReceipt(file.buffer, file.mimetype);
 
     // Save scan to database
@@ -486,8 +496,8 @@ export async function uploadReceipt(req: Request, res: Response): Promise<void> 
       }
     });
 
-    // Award 30 eco points for scanning receipts
-    const user = await prisma.user.findUnique({ where: { id: userId } });
+    // Award 30 eco points
+    const user = await prisma.user.findFirst({ where: { id: userId, deletedAt: null } });
     let updatedUser = user;
     if (user) {
       updatedUser = await prisma.user.update({
@@ -499,41 +509,58 @@ export async function uploadReceipt(req: Request, res: Response): Promise<void> 
       });
     }
 
+    await writeAudit(userId, 'UPLOAD_RECEIPT', `Scanned receipt: ${file.originalname}, estimated: ${result.co2Estimate} kg CO2`, req.ip);
     res.json({ scan, result, pointsAwarded: 30, user: updatedUser });
   } catch (error: any) {
     console.error('Upload Receipt Error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 }
 
 /**
  * Fetch Leaderboard rankings.
  */
-export async function getLeaderboard(req: Request, res: Response): Promise<void> {
+export async function getLeaderboard(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const users = await prisma.user.findMany({
+      where: { deletedAt: null },
       orderBy: { points: 'desc' },
       take: 10
     });
-    res.json(users);
+    
+    const mapped = users.map((u: any) => ({
+      id: u.id,
+      name: u.name,
+      points: u.points,
+      level: u.level
+    }));
+
+    res.json(mapped);
   } catch (error: any) {
     console.error('Leaderboard Fetch Error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 }
 
 /**
  * Spend green points in Carbon Offset Marketplace.
  */
-export async function buyOffset(req: Request, res: Response): Promise<void> {
+export async function buyOffset(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
-    const { userId, cost, name } = req.body;
-    if (!userId || !cost || !name) {
-      res.status(400).json({ error: 'userId, cost, and offset project name are required' });
+    if (!req.user) {
+      res.status(401).json({ error: 'Unauthorized' });
       return;
     }
 
-    const user = await prisma.user.findUnique({ where: { id: userId } });
+    const { cost, name } = req.body;
+    if (!cost || !name) {
+      res.status(400).json({ error: 'cost and offset project name are required' });
+      return;
+    }
+
+    const userId = req.user.id;
+
+    const user = await prisma.user.findFirst({ where: { id: userId, deletedAt: null } });
     if (!user) {
       res.status(404).json({ error: 'User not found' });
       return;
@@ -551,56 +578,60 @@ export async function buyOffset(req: Request, res: Response): Promise<void> {
       }
     });
 
+    await writeAudit(userId, 'BUY_OFFSET', `Redeemed offset: ${name}, cost: ${cost} XP`, req.ip);
+
     res.json({
       success: true,
       message: `Successfully purchased offset: ${name}! Spent ${cost} points.`,
-      user: updatedUser
+      user: {
+        id: updatedUser.id,
+        email: updatedUser.email,
+        name: updatedUser.name,
+        role: updatedUser.role,
+        points: updatedUser.points,
+        level: updatedUser.level
+      }
     });
   } catch (error: any) {
     console.error('Buy Offset Error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 }
 
 /**
  * Generate PDF sustainability report.
  */
-export async function generatePDFReport(req: Request, res: Response): Promise<void> {
+export async function generatePDFReport(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
-    const { userId } = req.params;
-    if (!userId) {
-      res.status(400).json({ error: 'userId is required' });
+    if (!req.user) {
+      res.status(401).json({ error: 'Unauthorized' });
       return;
     }
 
-    const user = await prisma.user.findUnique({ where: { id: userId } });
+    const userId = req.user.id;
+
+    const user = await prisma.user.findFirst({ where: { id: userId, deletedAt: null } });
     if (!user) {
       res.status(404).json({ error: 'User not found' });
       return;
     }
 
     const calculations = await prisma.calculation.findMany({
-      where: { userId },
+      where: { userId, deletedAt: null },
       orderBy: { createdAt: 'desc' },
       take: 1
     });
     const latestCalc = calculations[0] || null;
 
-    const habits = await prisma.dailyHabit.findMany({
-      where: { userId },
-      take: 10,
-      orderBy: { date: 'desc' }
-    });
-
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename=EcoTrack-Report-${user.name || 'User'}.pdf`);
+    res.setHeader('Content-Disposition', `attachment; filename=EcoTrack-Report-${user.name}.pdf`);
 
     const doc = new PDFDocument({ margin: 50 });
     doc.pipe(res);
 
-    // Styling Colors
-    const primaryColor = '#10B981'; // Emerald Green
-    const secondaryColor = '#065F46'; // Forest Green
+    // Colors
+    const primaryColor = '#10B981'; 
+    const secondaryColor = '#065F46'; 
     const darkGray = '#1F2937';
     const lightGray = '#F3F4F6';
 
@@ -616,7 +647,7 @@ export async function generatePDFReport(req: Request, res: Response): Promise<vo
     // Profile Details
     doc.fillColor(darkGray).fontSize(16).text('Sustainability Report Summary', 50, 125);
     doc.fontSize(11).fillColor('#4B5563');
-    doc.text(`User Profile: ${user.name || 'N/A'}`);
+    doc.text(`User Profile: ${user.name}`);
     doc.text(`Email: ${user.email}`);
     doc.text(`Total Eco Points: ${user.points} XP`);
     doc.text(`Achievement Level: ${user.level}`);
@@ -677,12 +708,11 @@ export async function generatePDFReport(req: Request, res: Response): Promise<vo
       doc.fillColor('#9CA3AF').fontSize(14).text('No Carbon Footprint calculations recorded yet. Complete your first calculation in the platform to generate a detailed report.', 50, 220);
     }
 
-    // Footer
     doc.fontSize(9).fillColor('#9CA3AF').text('Generated by EcoTrack AI. Understand your impact, reduce your footprint.', 50, 700, { align: 'center' });
 
     doc.end();
   } catch (error: any) {
     console.error('PDF Report Generation Error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 }

@@ -1,38 +1,53 @@
 import { Router } from 'express';
 import multer from 'multer';
 import * as apiController from '../controllers/apiController';
+import * as authController from '../controllers/authController';
+import { authMiddleware, authRateLimiter } from '../middleware/auth';
 
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({ 
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB upload limit
+});
 
-// Authentication & Users
-router.post('/auth/register', apiController.registerOrGetUser);
+// ==========================================
+// Public Authentication Routes
+// ==========================================
+router.post('/auth/register', authRateLimiter, authController.register);
+router.post('/auth/login', authRateLimiter, authController.login);
+router.post('/auth/refresh', authController.refreshToken);
+router.post('/auth/logout', authController.logout);
+
+// ==========================================
+// Protected Core Application Routes
+// ==========================================
+router.get('/auth/profile', authMiddleware, apiController.getProfile);
 
 // Carbon Footprint Calculator
-router.post('/calculator', apiController.calculateFootprint);
+router.post('/calculator', authMiddleware, apiController.calculateFootprint);
 
-// Dashboard Data
-router.get('/dashboard/:userId', apiController.getDashboard);
+// Carbon Dashboard Telemetry
+router.get('/dashboard', authMiddleware, apiController.getDashboard);
 
 // Daily Habit Tracker
-router.post('/habits', apiController.updateDailyHabits);
+router.post('/habits', authMiddleware, apiController.updateDailyHabits);
 
-// Green Challenges
-router.get('/challenges', apiController.getChallenges);
-router.post('/challenges/join', apiController.joinChallenge);
-router.post('/challenges/complete', apiController.completeChallenge);
+// Green Challenges & Missions
+router.get('/challenges', authMiddleware, apiController.getChallenges);
+router.post('/challenges/join', authMiddleware, apiController.joinChallenge);
+router.post('/challenges/complete', authMiddleware, apiController.completeChallenge);
 
 // Community Leaderboard
-router.get('/leaderboard', apiController.getLeaderboard);
+router.get('/leaderboard', authMiddleware, apiController.getLeaderboard);
 
 // Carbon Offset Marketplace
-router.post('/offset/buy', apiController.buyOffset);
+router.post('/offset/buy', authMiddleware, apiController.buyOffset);
 
-// AI Assistant & Receipt Scanner
-router.post('/ai/coach', apiController.askCoach);
-router.post('/ai/scan-receipt', upload.single('file'), apiController.uploadReceipt);
+// AI Sustainability Coach & Receipt Scanner
+router.post('/ai/coach', authMiddleware, apiController.askCoach);
+router.post('/ai/scan-receipt', authMiddleware, upload.single('file'), apiController.uploadReceipt);
 
 // Dynamic PDF Report download
-router.get('/reports/pdf/:userId', apiController.generatePDFReport);
+router.get('/reports/pdf', authMiddleware, apiController.generatePDFReport);
 
 export default router;
