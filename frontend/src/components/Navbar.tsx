@@ -100,6 +100,7 @@ export default function Navbar() {
                 onClick={logout}
                 className="p-2.5 rounded-full border border-white/10 text-gray-400 hover:text-red-400 hover:bg-red-500/10 hover:border-red-500/20 transition-all"
                 title="Sign Out"
+                aria-label="Sign Out"
               >
                 <LogOut className="w-4 h-4" />
               </button>
@@ -119,6 +120,7 @@ export default function Navbar() {
         <button
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
           className="lg:hidden p-2 rounded-lg text-gray-400 hover:bg-white/5 hover:text-white"
+          aria-label="Toggle mobile menu"
         >
           {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
         </button>
@@ -164,6 +166,7 @@ export default function Navbar() {
                     logout();
                   }}
                   className="p-2 rounded-lg border border-white/10 text-gray-400 hover:text-red-400 hover:bg-red-500/10"
+                  aria-label="Sign Out"
                 >
                   <LogOut className="w-5 h-5" />
                 </button>

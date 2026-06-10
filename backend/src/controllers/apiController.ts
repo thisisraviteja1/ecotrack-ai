@@ -623,8 +623,9 @@ export async function generatePDFReport(req: AuthenticatedRequest, res: Response
     });
     const latestCalc = calculations[0] || null;
 
+    const safeName = user.name.replace(/[^a-zA-Z0-9_-]/g, '_');
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename=EcoTrack-Report-${user.name}.pdf`);
+    res.setHeader('Content-Disposition', `attachment; filename="EcoTrack-Report-${safeName}.pdf"`);
 
     const doc = new PDFDocument({ margin: 50 });
     doc.pipe(res);

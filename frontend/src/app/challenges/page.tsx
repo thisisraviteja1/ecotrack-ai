@@ -146,6 +146,8 @@ export default function ChallengesPage() {
               <button
                 key={habit.key}
                 onClick={() => handleHabitToggle(habit.key as keyof typeof habits)}
+                role="checkbox"
+                aria-checked={isChecked ? "true" : "false"}
                 className={`w-full text-left p-3.5 rounded-xl border flex items-center justify-between gap-4 transition-all duration-300 ${
                   isChecked
                     ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'

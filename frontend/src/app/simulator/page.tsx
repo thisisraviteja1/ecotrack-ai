@@ -41,9 +41,10 @@ export default function SimulatorPage() {
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-semibold text-gray-200 block">Number of trees to plant</label>
+            <label htmlFor="treeCount-range" className="text-sm font-semibold text-gray-200 block">Number of trees to plant</label>
             <div className="flex items-center gap-4">
               <input
+                id="treeCount-range"
                 type="range"
                 min="1"
                 max="50"

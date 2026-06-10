@@ -3,6 +3,11 @@ import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { registerSchema, loginSchema } from '../utils/validation';
+import crypto from 'crypto';
+
+function hashToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
 
 const prisma = new PrismaClient();
 
@@ -82,7 +87,7 @@ export async function register(req: Request, res: Response): Promise<void> {
 
     await prisma.refreshToken.create({
       data: {
-        token: rawRefreshToken,
+        token: hashToken(rawRefreshToken),
         userId: user.id,
         expiresAt
       }
@@ -155,7 +160,7 @@ export async function login(req: Request, res: Response): Promise<void> {
 
     await prisma.refreshToken.create({
       data: {
-        token: rawRefreshToken,
+        token: hashToken(rawRefreshToken),
         userId: user.id,
         expiresAt
       }
@@ -211,7 +216,7 @@ export async function refreshToken(req: Request, res: Response): Promise<void> {
     
     // Find refresh token in DB
     const dbToken = await prisma.refreshToken.findUnique({
-      where: { token: cookieToken },
+      where: { token: hashToken(cookieToken) },
       include: { user: true }
     });
 
@@ -219,13 +224,15 @@ export async function refreshToken(req: Request, res: Response): Promise<void> {
     // If the token is valid but doesn't exist in the database, or has revokedAt set, it means
     // it was already rotated or used! We must revoke ALL active sessions for this user.
     if (!dbToken || dbToken.revokedAt || dbToken.expiresAt < new Date()) {
-      if (dbToken) {
+      // Decode user ID if token was valid but not found in DB
+      const userIdToRevoke = dbToken ? dbToken.userId : decoded.id;
+      if (userIdToRevoke) {
         // Revoke all tokens for this user
         await prisma.refreshToken.updateMany({
-          where: { userId: dbToken.userId },
+          where: { userId: userIdToRevoke },
           data: { revokedAt: new Date() }
         });
-        await writeAudit(dbToken.userId, 'REFRESH_TOKEN_REPLAY', `Potential replay attack detected. Revoked all tokens.`, req.ip);
+        await writeAudit(userIdToRevoke, 'REFRESH_TOKEN_REPLAY', `Potential replay attack detected or token not found. Revoked all tokens.`, req.ip);
       }
       res.status(403).json({ error: 'Unauthorized: Session compromised' });
       return;
@@ -247,7 +254,7 @@ export async function refreshToken(req: Request, res: Response): Promise<void> {
 
     await prisma.refreshToken.create({
       data: {
-        token: newRefreshToken,
+        token: hashToken(newRefreshToken),
         userId: dbToken.userId,
         expiresAt
       }
@@ -276,7 +283,7 @@ export async function logout(req: Request, res: Response): Promise<void> {
     try {
       // Revoke in DB
       await prisma.refreshToken.updateMany({
-        where: { token: cookieToken },
+        where: { token: hashToken(cookieToken) },
         data: { revokedAt: new Date() }
       });
     } catch (err) {

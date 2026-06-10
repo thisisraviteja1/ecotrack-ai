@@ -138,6 +138,7 @@ export default function CoachPage() {
             onChange={handleFileChange}
             id="file-upload"
             className="absolute inset-0 opacity-0 cursor-pointer"
+            aria-label="Upload utility bill or receipt"
           />
           <UploadCloud className="w-8 h-8 text-gray-500 mx-auto mb-2" />
           <p className="text-sm font-semibold text-gray-300">
@@ -222,6 +223,7 @@ export default function CoachPage() {
                   : 'bg-white/5 border-white/10 text-gray-400 hover:text-white'
               }`}
               title={voiceEnabled ? "Mute Voice Assistant" : "Enable Voice Assistant"}
+              aria-label={voiceEnabled ? "Mute Voice Assistant" : "Enable Voice Assistant"}
             >
               {voiceEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
             </button>
@@ -298,11 +300,13 @@ export default function CoachPage() {
               onKeyDown={(e) => e.key === 'Enter' && handleSend()}
               placeholder="Ask the Eco Coach..."
               className="flex-1 glass-input text-sm font-semibold focus:border-emerald-500"
+              aria-label="Ask the Eco Coach"
             />
             <button
               onClick={() => handleSend()}
               disabled={loading || !inputMessage.trim()}
               className="bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-white p-3 rounded-xl transition-all shadow-md shrink-0 flex items-center justify-center"
+              aria-label="Send message"
             >
               <Send className="w-4 h-4" />
             </button>
