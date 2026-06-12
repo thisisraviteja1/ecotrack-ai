@@ -50,6 +50,19 @@ describe('Zod Validation Schemas', () => {
         expect(result.error.errors[0].message).toBe('Password must contain at least one uppercase letter');
       }
     });
+
+    it('should fail registration if name contains @ (is an email)', () => {
+      const invalid = {
+        email: 'test@example.com',
+        password: 'Password123!',
+        name: 'alex@example.com',
+      };
+      const result = registerSchema.safeParse(invalid);
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.errors[0].message).toBe('Name cannot be an email address');
+      }
+    });
   });
 
   describe('loginSchema', () => {

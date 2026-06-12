@@ -44,6 +44,17 @@ export default function RegisterPage() {
       return;
     }
 
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setError('Invalid email address format');
+      return;
+    }
+
+    if (name.includes('@')) {
+      setError('Name cannot be an email address');
+      return;
+    }
+
     if (!isPasswordValid) {
       setError('Password does not meet safety standards');
       return;
@@ -75,7 +86,7 @@ export default function RegisterPage() {
       </div>
 
       <div className="glass-panel p-6 md:p-8 border-white/5 bg-gray-950/40 relative">
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form onSubmit={handleSubmit} noValidate className="space-y-5">
           {error && (
             <div className="bg-red-500/5 border border-red-500/20 p-3 rounded-lg flex items-center gap-2 text-xs text-red-400 font-semibold">
               <ShieldAlert className="w-4 h-4 shrink-0" />
@@ -91,7 +102,9 @@ export default function RegisterPage() {
               </span>
               <input
                 id="name-input"
+                name="name"
                 type="text"
+                autoComplete="name"
                 placeholder="Alex Mercer"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -109,7 +122,9 @@ export default function RegisterPage() {
               </span>
               <input
                 id="email-input"
+                name="email"
                 type="email"
+                autoComplete="email"
                 placeholder="you@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -127,7 +142,9 @@ export default function RegisterPage() {
               </span>
               <input
                 id="password-input"
+                name="password"
                 type="password"
+                autoComplete="new-password"
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}

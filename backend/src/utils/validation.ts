@@ -8,7 +8,9 @@ export const registerSchema = z.object({
     .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
     .regex(/[0-9]/, 'Password must contain at least one number')
     .regex(/[^A-Za-z0-9]/, 'Password must contain at least one special character'),
-  name: z.string().min(2, 'Name must be at least 2 characters long')
+  name: z.string()
+    .min(2, 'Name must be at least 2 characters long')
+    .refine(val => !val.includes('@'), { message: 'Name cannot be an email address' })
 });
 
 export const loginSchema = z.object({
