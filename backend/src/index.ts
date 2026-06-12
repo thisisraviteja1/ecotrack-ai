@@ -64,11 +64,13 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`========================================`);
-  console.log(`  EcoTrack AI Enterprise Server Running`);
-  console.log(`  Port: ${PORT}`);
-  console.log(`  Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`========================================`);
-});
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`========================================`);
+    console.log(`  EcoTrack AI Enterprise Server Running`);
+    console.log(`  Port: ${PORT}`);
+    console.log(`  Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`========================================`);
+  });
+}
 export default app; // For integration testing
