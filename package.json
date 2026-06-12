@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint",
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "lint": "tsc --noEmit",
     "test": "jest",
     "test:coverage": "jest --coverage",
     "test:e2e": "playwright test"
@@ -14,7 +14,6 @@
   "dependencies": {
     "framer-motion": "^12.40.0",
     "lucide-react": "^1.17.0",
-    "next": "15.2.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-is": "^19.2.7",
@@ -30,10 +29,12 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^6.0.2",
     "jest": "^30.4.2",
     "jest-environment-jsdom": "^30.4.1",
     "tailwindcss": "^4",
     "ts-jest": "^29.4.11",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vite": "^8.0.16"
   }
 }

@@ -14,3 +14,5 @@ describe('LoadingSkeleton Component', () => {
     expect(panels.length).toBe(5); // 4 in grid, 1 in large section
   });
 });
+
+
