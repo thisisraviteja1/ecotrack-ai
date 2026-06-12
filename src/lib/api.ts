@@ -470,7 +470,7 @@ export async function askCoach(history: any[], message: string) {
   const msgLower = message.toLowerCase();
   let aiResponse = '';
 
-  if (msgLower.includes('transport') || msgLower.includes('car') || msgLower.includes('travel') || msgLower.includes('flight')) {
+  if (msgLower.includes('transport') || /\bcar\b/.test(msgLower) || msgLower.includes('travel') || msgLower.includes('flight')) {
     const transportCO2 = lastCalc ? Math.round(lastCalc.transportCO2) : 120;
     aiResponse = `Regarding transportation, your monthly transport emission is **${transportCO2} kg CO2**. 
     
@@ -480,7 +480,7 @@ Here are custom steps based on your profile:
 3. **Optimise Highway Driving**: Driving at 55 mph instead of 75 mph improves fuel economy by about 15%.`;
   } 
   
-  else if (msgLower.includes('energy') || msgLower.includes('electricity') || msgLower.includes('ac') || msgLower.includes('power')) {
+  else if (msgLower.includes('energy') || msgLower.includes('electricity') || /\bac\b/.test(msgLower) || msgLower.includes('power')) {
     const energyCO2 = lastCalc ? Math.round(lastCalc.energyCO2) : 100;
     aiResponse = `For energy conservation, your current monthly energy emission is **${energyCO2} kg CO2**.
 
