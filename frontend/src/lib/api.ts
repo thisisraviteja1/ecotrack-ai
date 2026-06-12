@@ -1,8 +1,9 @@
 // EcoTrack AI Enterprise API Client helper
 
-const API_BASE = typeof window !== 'undefined' && window.location.hostname !== 'localhost'
-  ? '/_backend/api'
-  : 'http://localhost:5001/api';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 
+  (typeof window !== 'undefined' && window.location.hostname !== 'localhost'
+    ? '/_backend/api'
+    : 'http://localhost:5001/api');
 
 // Store JWT Access Token in-memory for security
 let inMemoryAccessToken: string | null = null;
