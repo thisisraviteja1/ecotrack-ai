@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import useAuth from '../../hooks/useAuth';
 import LoadingSkeleton from '../../components/LoadingSkeleton';
-import { getDashboardStats, getPdfReportUrl } from '../../lib/api';
+import { getDashboardStats, downloadTextReport } from '../../lib/api';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, Legend } from 'recharts';
 import { Award, TrendingDown, ArrowRight, Download, Brain, AlertCircle } from 'lucide-react';
 
@@ -81,16 +81,13 @@ export default function DashboardPage() {
           <h1 className="text-3xl font-extrabold text-white">Carbon Analytics Dashboard</h1>
           <p className="text-gray-400 font-semibold mt-1">Hello, {user?.name.split(' ')[0]}. Here is your sustainability overview.</p>
         </div>
-        {latestCalc && (
-          <a
-            href={getPdfReportUrl()}
-            download
-            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-white font-bold rounded-xl shadow-md transition-all text-sm shrink-0"
+          <button
+            onClick={() => downloadTextReport()}
+            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-white font-bold rounded-xl shadow-md transition-all text-sm shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950"
           >
             <Download className="w-4 h-4" />
-            <span>Download PDF Report</span>
-          </a>
-        )}
+            <span>Download Carbon Report</span>
+          </button>
       </div>
 
       {/* Profile Metrics Cards */}
