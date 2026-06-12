@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
-    "build": "prisma generate && tsc",
+    "build": "prisma generate && (if [ -n \"$DATABASE_URL\" ]; then prisma db push --accept-data-loss; else echo \"DATABASE_URL is not set. Skipping schema push.\"; fi) && tsc",
     "start": "node dist/index.js",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",

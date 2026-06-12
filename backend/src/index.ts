@@ -54,7 +54,8 @@ app.use('/api', apiRouter);
 
 // 6. Global Error Boundary Handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error('Express Error boundary caught error:', err.message || err);
+  const errMsg = err.message || '';
+  console.error('Express Error boundary caught error:', errMsg || err);
 
   // Return clean errors for Zod validation payload failures
   if (err.name === 'ZodError') {
@@ -62,9 +63,17 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
     return;
   }
 
+  // Handle descriptive database errors
+  if (errMsg.toLowerCase().includes('prisma') || errMsg.toLowerCase().includes('database') || errMsg.toLowerCase().includes('connect') || errMsg.toLowerCase().includes('dial')) {
+    res.status(500).json({ 
+      error: 'Database connection failed or tables are not initialized. Please ensure DATABASE_URL is set in Vercel settings and is reachable.' 
+    });
+    return;
+  }
+
   // General server exception shielding
   res.status(err.status || 500).json({ 
-    error: process.env.NODE_ENV === 'production' ? 'Internal Server Error' : err.message 
+    error: process.env.NODE_ENV === 'production' ? 'Internal Server Error' : errMsg 
   });
 });
 
