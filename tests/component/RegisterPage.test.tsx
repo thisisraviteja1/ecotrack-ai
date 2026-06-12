@@ -98,4 +98,99 @@ describe('RegisterPage Component', () => {
       expect(mockPush).toHaveBeenCalledWith('/calculator');
     });
   });
+
+  it('redirects to dashboard if already logged in', async () => {
+    (checkAuthStatus as jest.Mock).mockResolvedValueOnce({ id: '1', email: 'user@example.com', name: 'User' });
+    
+    render(<RegisterPage />);
+    
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith('/dashboard');
+    });
+  });
+
+
+
+  it('shows error if submitting with missing fields', async () => {
+    const { container } = render(<RegisterPage />);
+    const nameInput = screen.getByLabelText(/full name/i);
+    const emailInput = screen.getByLabelText(/email address/i);
+    const passwordInput = screen.getByLabelText(/password/i);
+    const submitBtn = screen.getByRole('button', { name: /sign up free/i });
+
+    // Set valid password to enable button, but leave name and email empty
+    fireEvent.change(passwordInput, { target: { value: 'Password123!' } });
+    
+    expect(submitBtn).not.toBeDisabled();
+    
+    // Trigger submit directly on the form
+    const form = container.querySelector('form');
+    expect(form).not.toBeNull();
+    fireEvent.submit(form!);
+
+    await waitFor(() => {
+      expect(screen.getByText('Please fill in all input fields')).toBeInTheDocument();
+    });
+  });
+
+  it('shows error if password does not meet safety standards', async () => {
+    const { container } = render(<RegisterPage />);
+    const nameInput = screen.getByLabelText(/full name/i);
+    const emailInput = screen.getByLabelText(/email address/i);
+    const passwordInput = screen.getByLabelText(/password/i);
+
+    fireEvent.change(nameInput, { target: { value: 'John Doe' } });
+    fireEvent.change(emailInput, { target: { value: 'user@example.com' } });
+    fireEvent.change(passwordInput, { target: { value: 'short' } }); // invalid password
+
+    const form = container.querySelector('form');
+    expect(form).not.toBeNull();
+    fireEvent.submit(form!);
+
+    await waitFor(() => {
+      expect(screen.getByText('Password does not meet safety standards')).toBeInTheDocument();
+    });
+  });
+
+  it('shows registration failed error if register API throws', async () => {
+    (register as jest.Mock).mockRejectedValueOnce(new Error('Registration failed'));
+    
+    render(<RegisterPage />);
+    
+    const nameInput = screen.getByLabelText(/full name/i);
+    const emailInput = screen.getByLabelText(/email address/i);
+    const passwordInput = screen.getByLabelText(/password/i);
+    const submitBtn = screen.getByRole('button', { name: /sign up free/i });
+
+    fireEvent.change(nameInput, { target: { value: 'John Doe' } });
+    fireEvent.change(emailInput, { target: { value: 'user@example.com' } });
+    fireEvent.change(passwordInput, { target: { value: 'Password123!' } });
+
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText('Registration failed')).toBeInTheDocument();
+    });
+  });
+
+  it('shows fallback error if register API throws error without message', async () => {
+    (register as jest.Mock).mockRejectedValueOnce({}); // empty object -> message is undefined
+    
+    render(<RegisterPage />);
+    
+    const nameInput = screen.getByLabelText(/full name/i);
+    const emailInput = screen.getByLabelText(/email address/i);
+    const passwordInput = screen.getByLabelText(/password/i);
+    const submitBtn = screen.getByRole('button', { name: /sign up free/i });
+
+    fireEvent.change(nameInput, { target: { value: 'John Doe' } });
+    fireEvent.change(emailInput, { target: { value: 'user@example.com' } });
+    fireEvent.change(passwordInput, { target: { value: 'Password123!' } });
+
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText('Registration failed. Email might already be in use.')).toBeInTheDocument();
+    });
+  });
 });

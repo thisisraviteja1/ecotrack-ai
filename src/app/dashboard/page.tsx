@@ -17,7 +17,6 @@ export default function DashboardPage() {
   useEffect(() => {
     setMounted(true);
     async function loadStats() {
-      if (!user) return;
       try {
         const stats = await getDashboardStats();
         setData(stats);

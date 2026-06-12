@@ -560,12 +560,12 @@ export async function scanReceipt(file: File) {
   if (nameLower.includes('bill') || nameLower.includes('electric') || nameLower.includes('utility')) {
     category = 'electricity';
     co2Estimate = 75.0;
-  } else if (nameLower.includes('fuel') || nameLower.includes('gas') || nameLower.includes('uber')) {
-    category = 'transport';
-    co2Estimate = 45.0;
   } else if (nameLower.includes('food') || nameLower.includes('grocery') || nameLower.includes('uber-eats')) {
     category = 'food';
     co2Estimate = 18.0;
+  } else if (nameLower.includes('fuel') || nameLower.includes('gas') || nameLower.includes('uber')) {
+    category = 'transport';
+    co2Estimate = 45.0;
   }
 
   // Award XP points for receipt audit scans

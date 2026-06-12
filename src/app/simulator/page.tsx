@@ -1,157 +1,375 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import useAuth from '../../hooks/useAuth';
 import LoadingSkeleton from '../../components/LoadingSkeleton';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, Leaf, Car, Award } from 'lucide-react';
+import { getDashboardStats } from '../../lib/api';
+import { calculateCarbonMath } from '../../lib/carbonMath';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { Leaf, Sparkles, TrendingDown, RefreshCw, Zap, ShieldCheck } from 'lucide-react';
 
 export default function SimulatorPage() {
-  const { loading: authLoading } = useAuth(true);
-  const [treeCount, setTreeCount] = useState<number>(5);
+  const { user, loading: authLoading } = useAuth(true);
+  const [mounted, setMounted] = useState(false);
+  const [loadingStats, setLoadingStats] = useState(true);
+  const [baselineCalc, setBaselineCalc] = useState<any>(null);
 
-  const annualOffsetPerTree = 22;
-  const lifetimeOffsetPerTree = 220;
+  // Simulation Sliders State
+  const [simTransport, setSimTransport] = useState(15);
+  const [simElectricity, setSimElectricity] = useState(180);
+  const [simAcUsage, setSimAcUsage] = useState(4);
+  const [simDiet, setSimDiet] = useState('mixed');
+  const [simRecycling, setSimRecycling] = useState('sometimes');
 
-  const annualOffsetTotal = treeCount * annualOffsetPerTree;
-  const lifetimeOffsetTotal = treeCount * lifetimeOffsetPerTree;
+  useEffect(() => {
+    setMounted(true);
+    async function loadStats() {
+      if (!user) return;
+      try {
+        const stats = await getDashboardStats();
+        const lastCalc = stats.lastCalculation;
+        if (lastCalc) {
+          setBaselineCalc(lastCalc);
+          setSimTransport(lastCalc.travelDistance !== undefined ? lastCalc.travelDistance : 15);
+          setSimElectricity(lastCalc.electricity !== undefined ? lastCalc.electricity : 180);
+          setSimAcUsage(lastCalc.acUsage !== undefined ? lastCalc.acUsage : 4);
+          setSimDiet(lastCalc.diet || 'mixed');
+          setSimRecycling(lastCalc.recyclingHabit || 'sometimes');
+        } else {
+          // Default baseline reference if user hasn't run the calculator yet
+          const defaultCalc = {
+            transportMode: 'car',
+            travelDistance: 15,
+            electricity: 180,
+            acUsage: 4,
+            diet: 'mixed',
+            shoppingOnline: 4,
+            shoppingFashion: 2,
+            recyclingHabit: 'sometimes',
+            plasticUsage: 'medium',
+            totalCO2: 380,
+            carbonScore: 49,
+            rating: 'D'
+          };
+          setBaselineCalc(defaultCalc);
+        }
+      } catch (err) {
+        console.error('Failed to load simulator baseline:', err);
+      } finally {
+        setLoadingStats(false);
+      }
+    }
+    if (user) {
+      loadStats();
+    }
+  }, [user]);
 
-  const carKmEquivalent = Math.round(annualOffsetTotal * 5.5);
-  const smartphonesCharged = Math.round(annualOffsetTotal * 122);
-  const plasticBottlesSaved = Math.round(annualOffsetTotal * 20);
-
-  if (authLoading) {
+  if (!mounted) return null;
+  if (authLoading || loadingStats) {
     return <LoadingSkeleton />;
   }
+
+  // Calculate Simulated Footprint
+  const simulatedCalc = calculateCarbonMath({
+    transportMode: baselineCalc?.transportMode || 'car',
+    travelDistance: Math.max(0, Math.min(200, Number(simTransport))),
+    electricity: Math.max(0, Math.min(1000, Number(simElectricity))),
+    acUsage: Math.max(0, Math.min(24, Number(simAcUsage))),
+    diet: simDiet as any,
+    shoppingOnline: baselineCalc?.shoppingOnline !== undefined ? baselineCalc.shoppingOnline : 4,
+    shoppingFashion: baselineCalc?.shoppingFashion !== undefined ? baselineCalc.shoppingFashion : 2,
+    recyclingHabit: simRecycling as any,
+    plasticUsage: baselineCalc?.plasticUsage || 'medium'
+  });
+
+  const baselineCO2 = baselineCalc ? baselineCalc.totalCO2 : 380;
+  const simulatedCO2 = simulatedCalc.totalCO2;
+  const annualSavings = Math.max(0, (baselineCO2 - simulatedCO2) * 12);
+  const scoreDiff = simulatedCalc.carbonScore - (baselineCalc ? baselineCalc.carbonScore : 49);
+
+  // Trajectory Projection Chart Data (5 Years Cumulative)
+  const trajectoryData = Array.from({ length: 5 }).map((_, idx) => {
+    const year = idx + 1;
+    return {
+      name: `Yr ${year}`,
+      'Baseline Route': Math.round(baselineCO2 * 12 * year),
+      'Optimized Route': Math.round(simulatedCO2 * 12 * year),
+    };
+  });
+
+  const totalSaved5Years = Math.round(annualSavings * 5);
+
+  // Carbon Twin Configuration based on simulated score
+  const score = simulatedCalc.carbonScore;
+  let twinStatus = 'Smoggy & Polluted';
+  let twinColor = 'text-red-400';
+  let twinBg = 'from-red-950/20 to-transparent border-red-500/10';
+  let avatarFace = (
+    <svg className="w-24 h-24 text-gray-500 animate-bounce" viewBox="0 0 100 100" fill="currentColor">
+      <circle cx="50" cy="50" r="45" fill="#5a524e" stroke="#3e3835" strokeWidth="4" />
+      <circle cx="35" cy="40" r="6" fill="#1e1b19" />
+      <circle cx="65" cy="40" r="6" fill="#1e1b19" />
+      <path d="M35 70 Q50 50 65 70" stroke="#1e1b19" strokeWidth="4" fill="none" />
+      <circle cx="20" cy="75" r="4" fill="#a78bfa" className="opacity-60" />
+      <circle cx="80" cy="25" r="5" fill="#a78bfa" className="opacity-60" />
+    </svg>
+  );
+
+  if (score >= 85) {
+    twinStatus = 'Eco Champion Avatar';
+    twinColor = 'text-emerald-400';
+    twinBg = 'from-emerald-950/20 to-transparent border-emerald-500/20';
+    avatarFace = (
+      <div className="relative">
+        <svg className="w-24 h-24 text-emerald-400 animate-pulse" viewBox="0 0 100 100" fill="currentColor">
+          <circle cx="50" cy="50" r="45" fill="#059669" stroke="#047857" strokeWidth="4" />
+          <circle cx="33" cy="42" r="7" fill="#ffffff" />
+          <circle cx="35" cy="42" r="3" fill="#10b981" />
+          <circle cx="67" cy="42" r="7" fill="#ffffff" />
+          <circle cx="65" cy="42" r="3" fill="#10b981" />
+          <path d="M33 65 Q50 82 67 65" stroke="#ffffff" strokeWidth="5" fill="none" strokeLinecap="round" />
+          {/* Flower crown */}
+          <circle cx="30" cy="12" r="6" fill="#fbbf24" />
+          <circle cx="50" cy="8" r="6" fill="#f43f5e" />
+          <circle cx="70" cy="12" r="6" fill="#38bdf8" />
+        </svg>
+        <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-yellow-400 text-black text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider shadow-lg">Eco King</span>
+      </div>
+    );
+  } else if (score >= 70) {
+    twinStatus = 'Healthy Planet Avatar';
+    twinColor = 'text-teal-400';
+    twinBg = 'from-teal-950/20 to-transparent border-teal-500/20';
+    avatarFace = (
+      <svg className="w-24 h-24 text-teal-400" viewBox="0 0 100 100" fill="currentColor">
+        <circle cx="50" cy="50" r="45" fill="#0d9488" stroke="#0f766e" strokeWidth="4" />
+        <circle cx="35" cy="42" r="6" fill="#ffffff" />
+        <circle cx="36" cy="42" r="2.5" fill="#0d9488" />
+        <circle cx="65" cy="42" r="6" fill="#ffffff" />
+        <circle cx="64" cy="42" r="2.5" fill="#0d9488" />
+        <path d="M36 65 Q50 78 64 65" stroke="#ffffff" strokeWidth="4" fill="none" strokeLinecap="round" />
+        <path d="M12 40 Q25 35 30 45" stroke="#fbbf24" strokeWidth="3" fill="none" />
+      </svg>
+    );
+  } else if (score >= 40) {
+    twinStatus = 'Active Learner Avatar';
+    twinColor = 'text-amber-400';
+    twinBg = 'from-amber-950/20 to-transparent border-amber-500/10';
+    avatarFace = (
+      <svg className="w-24 h-24 text-amber-500" viewBox="0 0 100 100" fill="currentColor">
+        <circle cx="50" cy="50" r="45" fill="#d97706" stroke="#b45309" strokeWidth="4" />
+        <circle cx="35" cy="42" r="5" fill="#ffffff" />
+        <circle cx="65" cy="42" r="5" fill="#ffffff" />
+        <line x1="33" y1="65" x2="67" y2="65" stroke="#ffffff" strokeWidth="4" strokeLinecap="round" />
+      </svg>
+    );
+  }
+
+  const handleResetSimulator = () => {
+    if (baselineCalc) {
+      setSimTransport(baselineCalc.travelDistance || 15);
+      setSimElectricity(baselineCalc.electricity || 180);
+      setSimAcUsage(baselineCalc.acUsage || 4);
+      setSimDiet(baselineCalc.diet || 'mixed');
+      setSimRecycling(baselineCalc.recyclingHabit || 'sometimes');
+    }
+  };
 
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-extrabold text-white">Tree Impact Simulator</h1>
-        <p className="text-gray-400 font-semibold mt-1">Visualize the long-term carbon offset power of planting trees.</p>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-3xl font-extrabold text-white">Impact Behavior Simulator</h1>
+          <p className="text-gray-400 font-semibold mt-1">Adjust your simulated choices to instantly project your future carbon trajectory.</p>
+        </div>
+        <button
+          onClick={handleResetSimulator}
+          className="inline-flex items-center gap-1.5 px-4 py-2 border border-white/10 hover:bg-white/5 text-white text-xs font-bold rounded-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+          aria-label="Reset simulation sliders to baseline calculations"
+        >
+          <RefreshCw className="w-3.5 h-3.5" />
+          <span>Reset Simulation</span>
+        </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Offset Calculator */}
-        <div className="glass-panel p-6 border-white/5 bg-gray-950/40 h-fit space-y-6">
+        {/* Sliders Input Column */}
+        <div className="glass-panel p-6 border-white/5 bg-gray-950/40 space-y-6 h-fit">
           <div className="flex items-center gap-2 text-emerald-400 font-bold uppercase tracking-widest text-xs">
-            <Leaf className="w-4 h-4" />
-            <span>Offset Calculator</span>
+            <Zap className="w-4 h-4" />
+            <span>Simulate Habits</span>
           </div>
 
+          {/* Transport Slider */}
           <div className="space-y-2">
-            <label htmlFor="treeCount-range" className="text-sm font-semibold text-gray-200 block">Number of trees to plant</label>
-            <div className="flex items-center gap-4">
-              <input
-                id="treeCount-range"
-                type="range"
-                min="1"
-                max="50"
-                value={treeCount}
-                onChange={(e) => setTreeCount(Number(e.target.value))}
-                className="flex-1 accent-emerald-500 cursor-pointer"
-              />
-              <span className="bg-white/5 border border-white/10 px-3.5 py-1.5 rounded-lg text-sm font-extrabold text-white shrink-0 min-w-14 text-center">
-                {treeCount}
-              </span>
-            </div>
+            <label htmlFor="sim-transport-range" className="text-xs font-bold text-gray-300 block">
+              Simulated Daily Distance: <span className="text-white font-extrabold">{simTransport} km</span>
+            </label>
+            <input
+              id="sim-transport-range"
+              type="range"
+              min="0"
+              max="200"
+              value={simTransport}
+              onChange={(e) => setSimTransport(Number(e.target.value))}
+              className="w-full accent-emerald-500 cursor-pointer"
+              aria-valuemin={0}
+              aria-valuemax={200}
+              aria-valuenow={simTransport}
+            />
           </div>
 
-          <div className="border-t border-white/5 pt-6 space-y-4">
-            <div className="bg-white/5 p-4 rounded-xl border border-white/5 text-center">
-              <span className="text-[10px] text-gray-400 uppercase font-black tracking-wider block">Estimated Annual Offset</span>
-              <span className="text-3xl font-black text-emerald-400 block mt-1">{annualOffsetTotal.toFixed(0)} kg CO₂</span>
-              <span className="text-[11px] text-gray-500 font-semibold mt-1 block">at ~22 kg CO₂ absorption per tree / year</span>
-            </div>
-
-            <div className="bg-white/5 p-4 rounded-xl border border-white/5 text-center">
-              <span className="text-[10px] text-gray-400 uppercase font-black tracking-wider block">10-Year Lifetime Offset</span>
-              <span className="text-3xl font-black text-white block mt-1">{lifetimeOffsetTotal.toFixed(0)} kg CO₂</span>
-              <span className="text-[11px] text-gray-500 font-semibold mt-1 block">equivalent to 2.2 metric tons of offset</span>
-            </div>
+          {/* Electricity Slider */}
+          <div className="space-y-2">
+            <label htmlFor="sim-electricity-range" className="text-xs font-bold text-gray-300 block">
+              Simulated Monthly Electric: <span className="text-white font-extrabold">{simElectricity} kWh</span>
+            </label>
+            <input
+              id="sim-electricity-range"
+              type="range"
+              min="0"
+              max="1000"
+              value={simElectricity}
+              onChange={(e) => setSimElectricity(Number(e.target.value))}
+              className="w-full accent-emerald-500 cursor-pointer"
+              aria-valuemin={0}
+              aria-valuemax={1000}
+              aria-valuenow={simElectricity}
+            />
           </div>
 
-          <div className="border-t border-white/5 pt-6 space-y-4">
-            <h3 className="text-xs font-bold text-gray-300 uppercase tracking-widest">Offset Equivalencies</h3>
-            
-            <div className="space-y-3">
-              <div className="flex items-center gap-3 bg-white/5 p-3 rounded-lg border border-white/5 text-xs text-gray-300">
-                <Car className="w-5 h-5 text-emerald-400 shrink-0" />
-                <div>
-                  <p className="font-extrabold text-white">Car Commuting Offset</p>
-                  <p className="font-semibold text-gray-400 mt-0.5">Cancels out {carKmEquivalent.toLocaleString()} km of gasoline driving.</p>
-                </div>
-              </div>
+          {/* AC Runtime Slider */}
+          <div className="space-y-2">
+            <label htmlFor="sim-ac-range" className="text-xs font-bold text-gray-300 block">
+              Simulated AC Usage: <span className="text-white font-extrabold">{simAcUsage} hrs/day</span>
+            </label>
+            <input
+              id="sim-ac-range"
+              type="range"
+              min="0"
+              max="24"
+              value={simAcUsage}
+              onChange={(e) => setSimAcUsage(Number(e.target.value))}
+              className="w-full accent-emerald-500 cursor-pointer"
+              aria-valuemin={0}
+              aria-valuemax={24}
+              aria-valuenow={simAcUsage}
+            />
+          </div>
 
-              <div className="flex items-center gap-3 bg-white/5 p-3 rounded-lg border border-white/5 text-xs text-gray-300">
-                <svg className="w-5 h-5 text-teal-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
-                  <line x1="12" y1="18" x2="12" y2="18.01" />
-                </svg>
-                <div>
-                  <p className="font-extrabold text-white">Device Charging Offset</p>
-                  <p className="font-semibold text-gray-400 mt-0.5">Offsets charging {smartphonesCharged.toLocaleString()} smartphones.</p>
-                </div>
-              </div>
+          {/* Diet Dropdown */}
+          <div className="space-y-2">
+            <label htmlFor="sim-diet-select" className="text-xs font-bold text-gray-300 block">Simulated Diet Option</label>
+            <select
+              id="sim-diet-select"
+              value={simDiet}
+              onChange={(e) => setSimDiet(e.target.value)}
+              className="w-full glass-input text-sm font-semibold cursor-pointer"
+            >
+              <option value="vegetarian">100% Vegetarian</option>
+              <option value="mixed">Mixed Food Intake</option>
+              <option value="non-vegetarian">Heavy Meat Diet</option>
+            </select>
+          </div>
 
-              <div className="flex items-center gap-3 bg-white/5 p-3 rounded-lg border border-white/5 text-xs text-gray-300">
-                <svg className="w-5 h-5 text-cyan-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-                </svg>
-                <div>
-                  <p className="font-extrabold text-white">Plastic Waste Offset</p>
-                  <p className="font-semibold text-gray-400 mt-0.5">Avoids equivalent emissions of {plasticBottlesSaved.toLocaleString()} plastic bottles.</p>
-                </div>
-              </div>
-            </div>
+          {/* Recycling Dropdown */}
+          <div className="space-y-2">
+            <label htmlFor="sim-recycling-select" className="text-xs font-bold text-gray-300 block">Simulated Recycling Habits</label>
+            <select
+              id="sim-recycling-select"
+              value={simRecycling}
+              onChange={(e) => setSimRecycling(e.target.value)}
+              className="w-full glass-input text-sm font-semibold cursor-pointer"
+            >
+              <option value="always">Always Separate Waste</option>
+              <option value="sometimes">Sometimes Recycle</option>
+              <option value="never">Landfill Trash Only</option>
+            </select>
           </div>
         </div>
 
-        {/* Canvas Forest */}
-        <div className="lg:col-span-2 glass-panel p-6 border-white/5 bg-gray-950/40 min-h-[50vh] flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between border-b border-white/5 pb-4">
-              <h2 className="text-xl font-bold text-white">Interactive Forest Canvas</h2>
-              <span className="bg-emerald-500/20 text-emerald-300 text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider">
-                {treeCount} Trees Growing
+        {/* Dashboard Display */}
+        <div className="lg:col-span-2 space-y-8">
+          {/* Carbon Twin & Real-time Projection Summary */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Carbon Twin Graphic */}
+            <div className={`glass-panel p-6 border bg-gradient-to-br ${twinBg} flex flex-col items-center justify-center gap-4 text-center`}>
+              <h3 className="text-sm font-bold text-gray-300 uppercase tracking-widest">My Carbon Twin</h3>
+              <div className="p-4 bg-gray-950/40 rounded-full border border-white/5 shadow-inner">
+                {avatarFace}
+              </div>
+              <div>
+                <p className={`font-black text-lg ${twinColor}`}>{twinStatus}</p>
+                <p className="text-xs text-gray-400 font-semibold mt-1">Twin grows healthier and evolves as your Carbon Score rises!</p>
+              </div>
+            </div>
+
+            {/* Impact Projection Stats */}
+            <div className="glass-panel p-6 border-white/5 bg-gray-950/40 flex flex-col justify-between gap-4">
+              <h3 className="text-sm font-bold text-gray-300 uppercase tracking-widest">Projection Statistics</h3>
+              <div className="space-y-4">
+                <div className="flex justify-between items-center border-b border-white/5 pb-2">
+                  <span className="text-xs text-gray-400 font-semibold">Projected Carbon Score</span>
+                  <div className="text-right">
+                    <span className="text-xl font-extrabold text-white">{simulatedCalc.carbonScore}</span>
+                    <span className={`text-xs font-bold ml-1.5 ${scoreDiff >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      ({scoreDiff >= 0 ? '+' : ''}{scoreDiff})
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex justify-between items-center border-b border-white/5 pb-2">
+                  <span className="text-xs text-gray-400 font-semibold">Simulated Monthly Footprint</span>
+                  <span className="text-lg font-extrabold text-white">{simulatedCalc.totalCO2.toFixed(1)} kg</span>
+                </div>
+
+                <div className="flex justify-between items-center pb-2">
+                  <span className="text-xs text-gray-400 font-semibold">Potential Annual Savings</span>
+                  <span className="text-lg font-extrabold text-emerald-400">{annualSavings.toFixed(0)} kg CO₂</span>
+                </div>
+              </div>
+
+              <div className="bg-emerald-500/5 border border-emerald-500/10 p-3.5 rounded-xl flex items-center gap-2.5 text-xs text-emerald-400 font-semibold">
+                <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-300" />
+                <span>Simulations use validated emissions formulas.</span>
+              </div>
+            </div>
+          </div>
+
+          {/* 5-Year Trajectory Line Chart */}
+          <div className="glass-panel p-6 border-white/5 bg-gray-950/40">
+            <div className="flex items-center justify-between border-b border-white/5 pb-4 mb-6">
+              <div>
+                <h3 className="text-base font-bold text-white">5-Year Trajectory Future Projection</h3>
+                <p className="text-gray-500 text-xs mt-0.5 font-semibold">Comparing business-as-usual vs simulated eco behaviors.</p>
+              </div>
+              <div className="text-right">
+                <span className="text-xs text-gray-400 font-semibold block">Total 5-Yr Carbon Saved</span>
+                <span className="text-lg font-black text-emerald-400">{totalSaved5Years.toLocaleString()} kg CO₂</span>
+              </div>
+            </div>
+
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={trajectoryData} margin={{ top: 10, right: 15, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" />
+                  <XAxis dataKey="name" stroke="#9ca3af" fontSize={11} fontWeight="600" />
+                  <YAxis stroke="#9ca3af" fontSize={11} fontWeight="600" />
+                  <Tooltip contentStyle={{ background: '#111827', border: '1px solid rgba(255,255,255,0.08)' }} />
+                  <Legend verticalAlign="top" height={36} />
+                  <Line type="monotone" dataKey="Baseline Route" stroke="rgba(156, 163, 175, 0.4)" strokeWidth={2.5} activeDot={{ r: 6 }} />
+                  <Line type="monotone" dataKey="Optimized Route" stroke="#10b981" strokeWidth={3} activeDot={{ r: 8 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="bg-white/5 border border-white/5 p-4 rounded-xl mt-6 flex items-start gap-2.5 text-xs text-gray-400 leading-relaxed font-semibold">
+              <Sparkles className="w-5 h-5 shrink-0 text-emerald-400" />
+              <span>
+                Under the **Optimized Route**, your cumulative reductions save enough carbon emissions to offset the equivalent lifetime absorption of **{(totalSaved5Years / 220).toFixed(1)} mature trees**!
               </span>
             </div>
-            <p className="text-gray-400 text-xs mt-3 font-semibold leading-relaxed">
-              Watch your forest expand! Every tree visualizes real carbon absorption working to lower greenhouse concentrations.
-            </p>
-          </div>
-
-          <div className="my-6 border border-white/5 bg-gray-900/30 rounded-2xl p-6 min-h-[350px] max-h-[420px] overflow-y-auto grid grid-cols-5 sm:grid-cols-10 gap-4 place-items-center relative">
-            <div className="absolute inset-0 bg-gradient-to-b from-transparent to-emerald-950/5 pointer-events-none" />
-            
-            <AnimatePresence>
-              {Array.from({ length: treeCount }).map((_, idx) => (
-                <motion.div
-                  key={idx}
-                  initial={{ scale: 0, y: 15 }}
-                  animate={{ scale: 1, y: 0 }}
-                  exit={{ scale: 0, y: 15 }}
-                  transition={{ type: 'spring', stiffness: 260, damping: 20, delay: Math.min(idx * 0.03, 1) }}
-                  className="relative group cursor-pointer"
-                >
-                  <svg className="w-10 h-12 text-emerald-400 hover:text-emerald-300 drop-shadow-[0_4px_6px_rgba(16,185,129,0.2)] hover:scale-110 transition-all duration-200" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 2L4 12h5v6h6v-6h5L12 2z" />
-                    <rect x="11" y="18" width="2" height="4" fill="#78350f" />
-                  </svg>
-                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 bg-gray-950 border border-white/10 px-2 py-1 rounded text-[8px] font-black text-gray-300 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none mb-1 z-10">
-                    Sapling #{idx + 1} (+22kg/yr)
-                  </div>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </div>
-
-          <div className="bg-emerald-500/5 border border-emerald-500/10 p-4 rounded-xl flex items-start gap-3 text-xs text-emerald-400 leading-relaxed font-semibold">
-            <Sparkles className="w-5 h-5 shrink-0 text-emerald-300" />
-            <span>
-              Tip: You can fund actual trees in the **Marketplace** by completing quests, earning points, and converting them to verified sapling planting offsets.
-            </span>
           </div>
         </div>
       </div>

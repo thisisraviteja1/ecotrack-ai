@@ -76,4 +76,43 @@ describe('LoginPage Component', () => {
       expect(screen.getByText('Invalid credentials')).toBeInTheDocument();
     });
   });
+
+  it('redirects to dashboard if already logged in', async () => {
+    (checkAuthStatus as jest.Mock).mockResolvedValueOnce({ id: '1', email: 'user@example.com', name: 'User' });
+    
+    render(<LoginPage />);
+    
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith('/dashboard');
+    });
+  });
+
+  it('shows validation error if email or password is empty', async () => {
+    render(<LoginPage />);
+    
+    const submitBtn = screen.getByRole('button', { name: /sign in/i });
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText('Please fill in all input fields')).toBeInTheDocument();
+    });
+  });
+
+  it('shows fallback error message if API fails with empty message', async () => {
+    (login as jest.Mock).mockRejectedValueOnce({}); // empty object -> message is undefined
+    
+    render(<LoginPage />);
+    
+    const emailInput = screen.getByLabelText(/email address/i);
+    const passwordInput = screen.getByLabelText(/password/i);
+    const submitBtn = screen.getByRole('button', { name: /sign in/i });
+
+    fireEvent.change(emailInput, { target: { value: 'wrong@example.com' } });
+    fireEvent.change(passwordInput, { target: { value: 'wrongpass' } });
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText('Invalid credentials, please try again.')).toBeInTheDocument();
+    });
+  });
 });

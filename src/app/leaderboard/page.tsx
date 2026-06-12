@@ -13,7 +13,6 @@ export default function LeaderboardPage() {
 
   useEffect(() => {
     async function loadData() {
-      if (!currentUser) return;
       try {
         const board = await getLeaderboard();
         
@@ -74,7 +73,7 @@ export default function LeaderboardPage() {
       {podiumUsers.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end pt-4">
           {podiumUsers.map((user, idx) => {
-            const style = podiumColors[idx] || podiumColors[2];
+            const style = podiumColors[idx];
             const Icon = style.icon;
             const isCurrentUser = user.id === currentUser?.id;
 

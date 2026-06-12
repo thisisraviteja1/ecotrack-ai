@@ -156,8 +156,7 @@ export default function LandingPage() {
                     feature.title.includes('Coach') ? '/coach' :
                     feature.title.includes('Scanner') ? '/coach' :
                     feature.title.includes('Missions') ? '/challenges' :
-                    feature.title.includes('Dashboard') ? '/dashboard' :
-                    feature.title.includes('Offset') ? '/marketplace' : '/dashboard'
+                    feature.title.includes('Dashboard') ? '/dashboard' : '/marketplace'
                   }
                   className="text-sm font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1 group/btn"
                 >

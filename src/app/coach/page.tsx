@@ -23,7 +23,9 @@ export default function CoachPage() {
   const [scanResult, setScanResult] = useState<any>(null);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (messagesEndRef.current?.scrollIntoView) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [messages]);
 
   const speakText = (text: string) => {

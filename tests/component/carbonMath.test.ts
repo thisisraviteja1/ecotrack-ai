@@ -101,4 +101,21 @@ describe('Carbon Calculation Math Utility', () => {
       expect(results.carbonScore).toBeLessThanOrEqual(100);
     });
   });
+
+  it('handles custom/falsy plasticUsage values', () => {
+    const inputs: FootprintInputs = {
+      transportMode: 'walking',
+      travelDistance: 0,
+      electricity: 0,
+      acUsage: 0,
+      diet: 'mixed',
+      shoppingOnline: 0,
+      shoppingFashion: 0,
+      recyclingHabit: 'never',
+      plasticUsage: 'none' as any
+    };
+    const results = calculateCarbonMath(inputs);
+    // wasteBase = 10 (no change), wasteCO2 = 10
+    expect(results.wasteCO2).toBe(10);
+  });
 });

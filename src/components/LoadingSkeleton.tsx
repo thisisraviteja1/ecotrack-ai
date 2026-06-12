@@ -2,7 +2,7 @@ import React from 'react';
 
 export default function LoadingSkeleton() {
   return (
-    <div className="space-y-6 animate-pulse max-w-4xl mx-auto pt-6 px-4">
+    <div data-testid="loading-skeleton" className="space-y-6 animate-pulse max-w-4xl mx-auto pt-6 px-4">
       {/* Header Skeleton */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/5 pb-4">
         <div className="space-y-2 w-1/3">

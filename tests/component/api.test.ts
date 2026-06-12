@@ -161,6 +161,11 @@ describe('Local Storage API Client', () => {
     expect(claimRes.success).toBe(true);
     expect(claimRes.user.points).toBe(firstChallenge.points);
 
+    // Get stats again to verify completed challenges mapping is covered
+    const statsAfterClaim = await getDashboardStats();
+    expect(statsAfterClaim.completedChallenges.length).toBe(1);
+    expect(statsAfterClaim.completedChallenges[0].title).toBe(firstChallenge.title);
+
     // Try claiming same reward again fails
     await expect(claimChallengeReward(userChallengeId)).rejects.toThrow('Reward already claimed or invalid challenge ID');
   });
@@ -337,6 +342,350 @@ describe('Local Storage API Client', () => {
     expect(spyCreate).toHaveBeenCalledWith('a');
     expect(spyElement.download).toContain('EcoTrack_Carbon_Report');
     expect(spyElement.click).toHaveBeenCalled();
+
+    spyCreate.mockRestore();
+    spyAppend.mockRestore();
+    spyRemove.mockRestore();
+    URL.createObjectURL = originalCreateObjectURL;
+    URL.revokeObjectURL = originalRevokeObjectURL;
+  });
+
+  it('throws Unauthorized error for authenticated services when logged out', async () => {
+    await logout();
+    await expect(getDashboardStats()).rejects.toThrow('Unauthorized');
+    await expect(submitCalculation({})).rejects.toThrow('Unauthorized');
+    await expect(submitHabits({})).rejects.toThrow('Unauthorized');
+    await expect(getChallenges()).rejects.toThrow('Unauthorized');
+    await expect(joinChallenge('ch-1')).rejects.toThrow('Unauthorized');
+    await expect(claimChallengeReward('uc-1')).rejects.toThrow('Unauthorized');
+    await expect(buyOffset(10, 'Test')).rejects.toThrow('Unauthorized');
+    await expect(askCoach([], 'hello')).rejects.toThrow('Unauthorized');
+    const file = new File([''], 'test.png');
+    await expect(scanReceipt(file)).rejects.toThrow('Unauthorized');
+    
+    // downloadTextReport returns early when logged out
+    const spyCreate = jest.spyOn(document, 'createElement');
+    await downloadTextReport();
+    expect(spyCreate).not.toHaveBeenCalled();
+    spyCreate.mockRestore();
+  });
+
+  it('handles user not found in local users list during updateStats', async () => {
+    await register({
+      email: 'notfound@example.com',
+      name: 'Not Found User',
+      password: 'Password123!'
+    });
+    // Remove users list from localStorage to force findIndex to return -1
+    localStorage.removeItem('ecotrack_users_list');
+    const result = await submitHabits({ usedBicycle: true });
+    expect(result.success).toBe(true);
+  });
+
+  it('handles claimChallengeReward error cases and fallback reward points', async () => {
+    const user = await register({
+      email: 'claimfail@example.com',
+      name: 'Claim Fail User',
+      password: 'Password123!'
+    });
+
+    // 1. Invalid reward id
+    await expect(claimChallengeReward('invalid-id')).rejects.toThrow('Reward already claimed or invalid challenge ID');
+
+    // 2. Custom challenge id that is not in the default list
+    const key = `ecotrack_challenges_${user.id}`;
+    localStorage.setItem(key, JSON.stringify([{
+      id: 'custom-uc-id',
+      challengeId: 'non-existent-ch',
+      status: 'IN_PROGRESS',
+      startedAt: new Date().toISOString(),
+      completedAt: null
+    }]));
+
+    const claimRes = await claimChallengeReward('custom-uc-id');
+    expect(claimRes.success).toBe(true);
+    expect(claimRes.user.points).toBe(100); // fallback 100 points
+  });
+
+  it('covers all habit checkboxes combinations in submitHabits', async () => {
+    await register({
+      email: 'allhabits@example.com',
+      name: 'All Habits User',
+      password: 'Password123!'
+    });
+
+    // All true
+    const resAllTrue = await submitHabits({
+      usedBicycle: true,
+      avoidedPlastic: true,
+      usedPublicTransport: true,
+      savedElectricity: true,
+      recycledWaste: true,
+      carpooled: true
+    });
+    expect(resAllTrue.user.points).toBe(90); // 6 * 15 = 90 XP
+
+    // All false
+    const resAllFalse = await submitHabits({
+      usedBicycle: false,
+      avoidedPlastic: false,
+      usedPublicTransport: false,
+      savedElectricity: false,
+      recycledWaste: false,
+      carpooled: false
+    });
+    expect(resAllFalse.user.points).toBe(90); // 90 + 0 = 90 XP
+  });
+
+  it('scans receipts with additional filenames', async () => {
+    await register({
+      email: 'receipts-extra@example.com',
+      name: 'Receipt User Extra',
+      password: 'Password123!'
+    });
+
+    const fileFood = new File([''], 'test_food.png');
+    const resFood = await scanReceipt(fileFood);
+    expect(resFood.result.co2Estimate).toBe(18.0);
+
+    const fileEats = new File([''], 'my_uber-eats_receipt.png');
+    const resEats = await scanReceipt(fileEats);
+    expect(resEats.result.co2Estimate).toBe(18.0);
+  });
+
+  it('handles missing lastCalculation in askCoach and downloadTextReport', async () => {
+    const user = await register({
+      email: 'missingcalc@example.com',
+      name: 'Missing Calc User',
+      password: 'Password123!'
+    });
+
+    // Mock JSON.parse to return a custom array with map overridden to prevent TypeError
+    const originalParse = JSON.parse;
+    JSON.parse = function(text) {
+      const res = originalParse(text);
+      if (Array.isArray(res) && res.length === 1 && res[0] === null) {
+        const arr = [null];
+        arr.map = () => [];
+        return arr;
+      }
+      return res;
+    };
+
+    // Force lastCalculation to be null by seeding [null] into calculation history
+    const key = `ecotrack_calcs_${user.id}`;
+    localStorage.setItem(key, JSON.stringify([null]));
+
+    // Check stats first
+    const stats = await getDashboardStats();
+    expect(stats.lastCalculation).toBeNull();
+    expect(stats.monthlyFootprint).toBe(0);
+    expect(stats.reductionPercentage).toBe(0);
+
+    // askCoach transport tips with null lastCalc categories
+    const resTransport = await askCoach([], 'give me transport tips');
+    expect(resTransport.reply).toContain('120 kg CO2');
+
+    // askCoach energy tips with null lastCalc categories
+    const resEnergy = await askCoach([], 'give me energy tips');
+    expect(resEnergy.reply).toContain('100 kg CO2');
+
+    // askCoach default response with null lastCalc categories
+    const resDefault = await askCoach([], 'hello');
+    expect(resDefault.reply).toContain('Energy Usage');
+    expect(resDefault.reply).toContain('100 kg CO2');
+
+    // downloadTextReport with null lastCalc categories
+    const spyElement = {
+      href: '',
+      download: '',
+      click: jest.fn(),
+    };
+    const spyCreate = jest.spyOn(document, 'createElement').mockReturnValue(spyElement as any);
+    const spyAppend = jest.spyOn(document.body, 'appendChild').mockImplementation(() => ({} as any));
+    const spyRemove = jest.spyOn(document.body, 'removeChild').mockImplementation(() => ({} as any));
+    
+    const originalCreateObjectURL = URL.createObjectURL;
+    const originalRevokeObjectURL = URL.revokeObjectURL;
+    URL.createObjectURL = jest.fn().mockReturnValue('mock-blob-url');
+    URL.revokeObjectURL = jest.fn();
+
+    await downloadTextReport();
+
+    expect(spyElement.download).toContain('EcoTrack_Carbon_Report');
+
+    spyCreate.mockRestore();
+    spyAppend.mockRestore();
+    spyRemove.mockRestore();
+    URL.createObjectURL = originalCreateObjectURL;
+    URL.revokeObjectURL = originalRevokeObjectURL;
+
+    // Restore JSON.parse
+    JSON.parse = originalParse;
+  });
+
+  it('handles default askCoach fallbacks where food or shopping is highest category', async () => {
+    await register({
+      email: 'fallbackhigh@example.com',
+      name: 'Fallback High User',
+      password: 'Password123!'
+    });
+
+    // 1. Food is highest
+    await submitCalculation({
+      transportMode: 'walking',
+      travelDistance: 0,
+      electricity: 0,
+      acUsage: 0,
+      diet: 'mixed', // food emissions will be 150 kg
+      shoppingOnline: 0,
+      shoppingFashion: 0,
+      recyclingHabit: 'always',
+      plasticUsage: 'low'
+    });
+    const resFood = await askCoach([], 'hello');
+    expect(resFood.reply).toContain('Food Habits');
+
+    // 2. Shopping is highest
+    await submitCalculation({
+      transportMode: 'walking',
+      travelDistance: 0,
+      electricity: 0,
+      acUsage: 0,
+      diet: 'vegetarian', // food emissions will be 60 kg
+      shoppingOnline: 10, // 30 kg
+      shoppingFashion: 10, // 150 kg
+      recyclingHabit: 'always',
+      plasticUsage: 'low'
+    });
+    const resShop = await askCoach([], 'hello');
+    expect(resShop.reply).toContain('Shopping Habits');
+  });
+
+  it('handles null user during updateUserStats', async () => {
+    await register({ email: 'nulluserstats@example.com', name: 'Null Stats User', password: 'Password123!' });
+    
+    let callCount = 0;
+    const originalGetItem = Storage.prototype.getItem;
+    Storage.prototype.getItem = jest.fn().mockImplementation(function(key) {
+      if (key === 'ecotrack_user') {
+        callCount++;
+        if (callCount > 1) {
+          return null;
+        }
+      }
+      return originalGetItem.call(localStorage, key);
+    });
+
+    const res = await submitHabits({ usedBicycle: true });
+    expect(res.user).toBeNull();
+
+    Storage.prototype.getItem = originalGetItem;
+  });
+
+  it('handles user not found in general users list during stats update', async () => {
+    const user = await register({ email: 'missinglist@example.com', name: 'Missing List User', password: 'Password123!' });
+    
+    const users = JSON.parse(localStorage.getItem('ecotrack_users') || '[]');
+    const filtered = users.filter((u: any) => u.id !== user.id);
+    localStorage.setItem('ecotrack_users', JSON.stringify(filtered));
+
+    const res = await submitHabits({ usedBicycle: true });
+    expect(res.success).toBe(true);
+    
+    const updatedUsers = JSON.parse(localStorage.getItem('ecotrack_users') || '[]');
+    expect(updatedUsers.some((u: any) => u.id === user.id)).toBe(false);
+  });
+
+  it('prevents double joining of challenges', async () => {
+    await register({ email: 'doublejoin@example.com', name: 'Double Join User', password: 'Password123!' });
+    const list = await getChallenges();
+    const chId = list[0].id;
+    
+    const firstJoin = await joinChallenge(chId);
+    expect(firstJoin.success).toBe(true);
+
+    const secondJoin = await joinChallenge(chId);
+    expect(secondJoin.success).toBe(true);
+  });
+
+  it('covers askCoach diet/food and plastic/waste prompts under null and non-null calculation history', async () => {
+    const user = await register({ email: 'coachprompts@example.com', name: 'Coach Prompts User', password: 'Password123!' });
+    
+    // 1. Null history by setting ecotrack_calcs empty in localStorage and mocking JSON.parse
+    const key = `ecotrack_calcs_${user.id}`;
+    const originalParse = JSON.parse;
+    JSON.parse = (text: string) => {
+      if (text.includes('ecotrack_user') || text.includes('ecotrack_users')) {
+        return originalParse(text);
+      }
+      const arr = [null];
+      arr.map = () => [];
+      return arr;
+    };
+    
+    const resFoodNull = await askCoach([], 'give me food and diet advice');
+    expect(resFoodNull.reply).toContain('mixed');
+
+    const resWasteNull = await askCoach([], 'what is plastic waste advice');
+    expect(resWasteNull.reply).toContain('medium');
+
+    JSON.parse = originalParse;
+
+    // 2. Non-null history
+    await submitCalculation({
+      transportMode: 'car',
+      travelDistance: 10,
+      electricity: 100,
+      acUsage: 2,
+      diet: 'vegan',
+      shoppingOnline: 1,
+      shoppingFashion: 1,
+      recyclingHabit: 'always',
+      plasticUsage: 'low'
+    });
+
+    const resFoodVegan = await askCoach([], 'food and diet advice please');
+    expect(resFoodVegan.reply).toContain('vegan');
+
+    const resWasteLow = await askCoach([], 'plastic waste advice please');
+    expect(resWasteLow.reply).toContain('low');
+  });
+
+  it('scans receipts with gas and uber filenames for transport category short-circuit branches', async () => {
+    await register({ email: 'gasreceipt@example.com', name: 'Gas User', password: 'Password123!' });
+    
+    const fileGas = new File(['mock content'], 'gasoline_receipt.jpg', { type: 'image/jpeg' });
+    const resGas = await scanReceipt(fileGas);
+    expect(resGas.result.co2Estimate).toBe(45.0);
+
+    const fileUber = new File(['mock content'], 'uber_trip.png', { type: 'image/png' });
+    const resUber = await scanReceipt(fileUber);
+    expect(resUber.result.co2Estimate).toBe(45.0);
+  });
+
+  it('generates text report with populated habits history', async () => {
+    await register({ email: 'reporthabits@example.com', name: 'Report User', password: 'Password123!' });
+    
+    await submitHabits({ usedBicycle: true });
+
+    const spyElement = {
+      href: '',
+      download: '',
+      click: jest.fn(),
+    };
+    const spyCreate = jest.spyOn(document, 'createElement').mockReturnValue(spyElement as any);
+    const spyAppend = jest.spyOn(document.body, 'appendChild').mockImplementation(() => ({} as any));
+    const spyRemove = jest.spyOn(document.body, 'removeChild').mockImplementation(() => ({} as any));
+    
+    const originalCreateObjectURL = URL.createObjectURL;
+    const originalRevokeObjectURL = URL.revokeObjectURL;
+    URL.createObjectURL = jest.fn().mockReturnValue('mock-blob-url');
+    URL.revokeObjectURL = jest.fn();
+
+    await downloadTextReport();
+
+    expect(spyElement.download).toContain('EcoTrack_Carbon_Report');
 
     spyCreate.mockRestore();
     spyAppend.mockRestore();

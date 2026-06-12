@@ -26,7 +26,6 @@ export default function ChallengesPage() {
   const [completedChallenges, setCompletedChallenges] = useState<any[]>([]);
 
   const loadPageData = async () => {
-    if (!user) return;
     try {
       const stats = await getDashboardStats();
       
@@ -60,8 +59,10 @@ export default function ChallengesPage() {
   useEffect(() => {
     if (user) {
       loadPageData();
+    } else if (!authLoading) {
+      setLoading(false);
     }
-  }, [user]);
+  }, [user, authLoading]);
 
   const handleHabitToggle = async (key: keyof typeof habits) => {
     if (!user) return;
