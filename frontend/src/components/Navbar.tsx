@@ -61,7 +61,7 @@ export default function Navbar() {
               <Link
                 key={link.href}
                 href={link.href}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950 ${
                   isActive
                     ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/25'
                     : 'text-gray-300 hover:bg-white/5 hover:text-white border border-transparent'
@@ -98,7 +98,7 @@ export default function Navbar() {
               </div>
               <button
                 onClick={logout}
-                className="p-2.5 rounded-full border border-white/10 text-gray-400 hover:text-red-400 hover:bg-red-500/10 hover:border-red-500/20 transition-all"
+                className="p-2.5 rounded-full border border-white/10 text-gray-400 hover:text-red-400 hover:bg-red-500/10 hover:border-red-500/20 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950"
                 title="Sign Out"
                 aria-label="Sign Out"
               >
@@ -108,7 +108,7 @@ export default function Navbar() {
           ) : (
             <Link
               href="/login"
-              className="flex items-center gap-1.5 px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-white text-xs font-extrabold rounded-full transition-all"
+              className="flex items-center gap-1.5 px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-white text-xs font-extrabold rounded-full transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950"
             >
               <LogIn className="w-3.5 h-3.5" />
               <span>Sign In</span>
@@ -119,7 +119,7 @@ export default function Navbar() {
         {/* Mobile menu trigger */}
         <button
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="lg:hidden p-2 rounded-lg text-gray-400 hover:bg-white/5 hover:text-white"
+          className="lg:hidden p-2 rounded-lg text-gray-400 hover:bg-white/5 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
           aria-label="Toggle mobile menu"
         >
           {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
@@ -137,7 +137,7 @@ export default function Navbar() {
                 key={link.href}
                 href={link.href}
                 onClick={() => setMobileMenuOpen(false)}
-                className={`flex items-center gap-3 px-4 py-2.5 rounded-lg text-base font-semibold ${
+                className={`flex items-center gap-3 px-4 py-2.5 rounded-lg text-base font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
                   isActive
                     ? 'bg-emerald-500/15 text-emerald-400'
                     : 'text-gray-300 hover:bg-white/5'
@@ -165,7 +165,7 @@ export default function Navbar() {
                     setMobileMenuOpen(false);
                     logout();
                   }}
-                  className="p-2 rounded-lg border border-white/10 text-gray-400 hover:text-red-400 hover:bg-red-500/10"
+                  className="p-2 rounded-lg border border-white/10 text-gray-400 hover:text-red-400 hover:bg-red-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                   aria-label="Sign Out"
                 >
                   <LogOut className="w-5 h-5" />
@@ -176,7 +176,7 @@ export default function Navbar() {
             <Link
               href="/login"
               onClick={() => setMobileMenuOpen(false)}
-              className="flex items-center justify-center gap-2 mt-3 px-4 py-3 bg-emerald-500 hover:bg-emerald-400 text-white text-base font-bold rounded-xl transition-all"
+              className="flex items-center justify-center gap-2 mt-3 px-4 py-3 bg-emerald-500 hover:bg-emerald-400 text-white text-base font-bold rounded-xl transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
             >
               <LogIn className="w-5 h-5" />
               <span>Sign In</span>
