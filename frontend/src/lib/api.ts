@@ -2,7 +2,7 @@
 // Implements 100% client-side persistence, local AI Insight generation,
 // and zero-config deployment without external server dependencies.
 
-import { calculateCarbonMath, FootprintInputs, FootprintOutputs } from '../../../backend/src/utils/carbonMath';
+import { calculateCarbonMath, FootprintInputs, FootprintOutputs } from './carbonMath';
 
 // Safe check for browser localStorage
 const isBrowser = typeof window !== 'undefined';
