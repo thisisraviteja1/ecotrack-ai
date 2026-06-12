@@ -5,6 +5,7 @@ import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import apiRouter from './routes/api';
 import { rateLimiter } from './middleware/auth';
+import { setCsrfToken, validateCsrfToken } from './middleware/csrf';
 
 dotenv.config();
 
@@ -29,13 +30,16 @@ app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:3000',
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token']
 }));
 
-// 3. Request parsers
+// 3. Request parsers and CSRF Middlewares
 app.use(cookieParser());
 app.use(express.json({ limit: '5mb' })); // Limit body sizes to prevent DoS attacks
 app.use(express.urlencoded({ extended: true, limit: '5mb' }));
+
+app.use(setCsrfToken);
+app.use(validateCsrfToken);
 
 // 4. API Rate Limiting
 app.use('/api', rateLimiter);

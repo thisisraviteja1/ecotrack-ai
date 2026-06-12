@@ -11,21 +11,46 @@ let inMemoryAccessToken: string | null = null;
 /**
  * Custom fetch wrapper that appends JWT Authorization and handles silent token refresh
  */
-async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
+function getCookie(name: string): string | null {
+  if (typeof document === 'undefined') return null;
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop()?.split(';').shift() || null;
+  return null;
+}
+
+/**
+ * Base fetch client that handles headers, CSRF token, and credentials
+ */
+async function baseFetch(url: string, options: RequestInit = {}): Promise<Response> {
   const headers = new Headers(options.headers || {});
   
   if (inMemoryAccessToken) {
     headers.set('Authorization', `Bearer ${inMemoryAccessToken}`);
   }
-  
-  // Enforce sending credentials (HTTP-only cookies for refresh tokens)
+
+  const method = options.method || 'GET';
+  if (['POST', 'PUT', 'DELETE'].includes(method.toUpperCase())) {
+    const csrfToken = getCookie('csrfToken');
+    if (csrfToken) {
+      headers.set('X-CSRF-Token', csrfToken);
+    }
+  }
+
   const fetchOptions: RequestInit = {
     ...options,
     headers,
-    credentials: 'include' // crucial for reading/writing cross-origin HTTP-only cookies
+    credentials: 'include'
   };
 
-  let response = await fetch(url, fetchOptions);
+  return fetch(url, fetchOptions);
+}
+
+/**
+ * Custom fetch wrapper that appends JWT Authorization and handles silent token refresh
+ */
+async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  let response = await baseFetch(url, options);
 
   // If unauthorized, token might have expired. Try rotating/refreshing.
   if ((response.status === 401 || response.status === 403) && !url.includes('/auth/refresh')) {
@@ -33,8 +58,7 @@ async function authFetch(url: string, options: RequestInit = {}): Promise<Respon
       const refreshed = await attemptTokenRefresh();
       if (refreshed) {
         // Retry original request with new token
-        headers.set('Authorization', `Bearer ${inMemoryAccessToken}`);
-        response = await fetch(url, fetchOptions);
+        response = await baseFetch(url, options);
       }
     } catch (e) {
       console.warn('Silent token refresh failed, forcing logout:', e);
@@ -50,9 +74,8 @@ async function authFetch(url: string, options: RequestInit = {}): Promise<Respon
  */
 async function attemptTokenRefresh(): Promise<boolean> {
   try {
-    const response = await fetch(`${API_BASE}/auth/refresh`, {
-      method: 'POST',
-      credentials: 'include'
+    const response = await baseFetch(`${API_BASE}/auth/refresh`, {
+      method: 'POST'
     });
 
     if (response.ok) {
@@ -71,9 +94,8 @@ async function attemptTokenRefresh(): Promise<boolean> {
  */
 export async function logout(): Promise<void> {
   try {
-    await fetch(`${API_BASE}/auth/logout`, {
-      method: 'POST',
-      credentials: 'include'
+    await baseFetch(`${API_BASE}/auth/logout`, {
+      method: 'POST'
     });
   } catch (e) {
     console.warn('Network error during logout API call:', e);
@@ -122,7 +144,7 @@ export async function checkAuthStatus(): Promise<any | null> {
  * Login user
  */
 export async function login(credentials: { email: string; password?: string }) {
-  const response = await fetch(`${API_BASE}/auth/login`, {
+  const response = await baseFetch(`${API_BASE}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(credentials)
@@ -144,7 +166,7 @@ export async function login(credentials: { email: string; password?: string }) {
  * Register user
  */
 export async function register(profile: { email: string; password?: string; name: string }) {
-  const response = await fetch(`${API_BASE}/auth/register`, {
+  const response = await baseFetch(`${API_BASE}/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(profile)
